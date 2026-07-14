@@ -380,6 +380,12 @@ function AppUpdateButton() {
     return () => window.clearTimeout(timeout);
   }, []);
 
+  useEffect(() => {
+    if (!message) return;
+    const timeout = window.setTimeout(() => setMessage(""), 3500);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
+
   if (!isTauriRuntime()) return null;
 
   if (!update) {
@@ -394,9 +400,12 @@ function AppUpdateButton() {
           <RefreshCw className={cn("h-[18px] w-[18px]", checking && "animate-spin")} />
         </button>
         {message && (
-          <div className="absolute right-0 top-full mt-2 whitespace-nowrap rounded-lg border border-border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-[var(--shadow-elevated)]">
+          <button
+            onClick={() => setMessage("")}
+            className="absolute right-0 top-full mt-2 whitespace-nowrap rounded-lg border border-border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:bg-surface-2"
+          >
             {message}
-          </div>
+          </button>
         )}
       </div>
     );
@@ -414,9 +423,12 @@ function AppUpdateButton() {
         {installing ? `${progress}%` : "Update"}
       </button>
       {message && (
-        <div className="absolute right-0 top-full mt-2 max-w-72 rounded-lg border border-destructive/30 bg-popover px-3 py-2 text-xs text-destructive shadow-[var(--shadow-elevated)]">
+        <button
+          onClick={() => setMessage("")}
+          className="absolute right-0 top-full mt-2 max-w-72 rounded-lg border border-destructive/30 bg-popover px-3 py-2 text-xs text-destructive shadow-[var(--shadow-elevated)] transition hover:bg-surface-2"
+        >
           {message}
-        </div>
+        </button>
       )}
     </div>
   );
