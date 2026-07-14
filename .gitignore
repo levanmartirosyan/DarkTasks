@@ -35,3 +35,4 @@ src-tauri/binaries/
 .env
 darktasks.key
 .tauri/*.key
+~

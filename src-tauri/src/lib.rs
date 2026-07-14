@@ -1,4 +1,6 @@
 use std::{
+    fs::{create_dir_all, OpenOptions},
+    io::Write,
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::Mutex,
@@ -6,45 +8,104 @@ use std::{
 
 use tauri::{Manager, RunEvent};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 struct ApiSidecar(Mutex<Option<Child>>);
 
 fn api_sidecar_candidates(resource_dir: PathBuf) -> Vec<PathBuf> {
-    let binary_name = "darktasks-api-x86_64-pc-windows-msvc.exe";
-    vec![
-        resource_dir.join("binaries").join(binary_name),
-        resource_dir.join(binary_name),
-    ]
+    let binary_names = [
+        "darktasks-api.exe",
+        "darktasks-api-x86_64-pc-windows-msvc.exe",
+    ];
+    let mut candidates = Vec::new();
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            for binary_name in binary_names {
+                candidates.push(exe_dir.join(binary_name));
+            }
+        }
+    }
+
+    for binary_name in binary_names {
+        candidates.push(resource_dir.join("binaries").join(binary_name));
+        candidates.push(resource_dir.join(binary_name));
+    }
+
+    candidates
+}
+
+fn api_log_path(app: &tauri::App) -> Option<PathBuf> {
+    let log_dir = app.path().app_log_dir().ok()?;
+    let _ = create_dir_all(&log_dir);
+    Some(log_dir.join("darktasks-api.log"))
+}
+
+fn write_api_log(app: &tauri::App, message: &str) {
+    let Some(path) = api_log_path(app) else {
+        return;
+    };
+
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{message}");
+    }
 }
 
 fn start_api_sidecar(app: &tauri::App) {
     let Ok(resource_dir) = app.path().resource_dir() else {
-        eprintln!("DarkTasks API sidecar skipped: resource directory was not found.");
+        write_api_log(app, "DarkTasks API sidecar skipped: resource directory was not found.");
         return;
     };
 
-    let Some(api_path) = api_sidecar_candidates(resource_dir.clone())
-        .into_iter()
-        .find(|path| path.exists())
-    else {
-        eprintln!("DarkTasks API sidecar skipped: bundled API executable was not found.");
+    let candidates = api_sidecar_candidates(resource_dir.clone());
+    let Some(api_path) = candidates.iter().find(|path| path.exists()).cloned() else {
+        write_api_log(app, "DarkTasks API sidecar skipped: bundled API executable was not found.");
+        for candidate in candidates {
+            write_api_log(app, &format!("Missing candidate: {}", candidate.display()));
+        }
         return;
     };
+
+    write_api_log(app, &format!("Starting DarkTasks API: {}", api_path.display()));
+    write_api_log(app, &format!("API working directory: {}", resource_dir.display()));
 
     let mut command = Command::new(api_path);
     command
         .current_dir(resource_dir)
         .env("API_HOST", "127.0.0.1")
         .env("API_PORT", "8787")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdin(Stdio::null());
+
+    if let Some(path) = api_log_path(app) {
+        if let Ok(stdout) = OpenOptions::new().create(true).append(true).open(&path) {
+            let stderr = stdout.try_clone().ok();
+            command.stdout(Stdio::from(stdout));
+            if let Some(stderr) = stderr {
+                command.stderr(Stdio::from(stderr));
+            } else {
+                command.stderr(Stdio::null());
+            }
+        } else {
+            command.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+    } else {
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+    }
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
 
     match command.spawn() {
         Ok(child) => {
+            write_api_log(app, "DarkTasks API sidecar started.");
             app.manage(ApiSidecar(Mutex::new(Some(child))));
         }
         Err(error) => {
-            eprintln!("DarkTasks API sidecar failed to start: {error}");
+            write_api_log(app, &format!("DarkTasks API sidecar failed to start: {error}"));
         }
     }
 }

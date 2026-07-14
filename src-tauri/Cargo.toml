@@ -1,8 +1,8 @@
 [package]
 name = "darktasks"
-version = "0.1.0"
+version = "0.1.1"
 description = "DarkTasks desktop app"
-authors = ["DarkTasks"]
+authors = ["Levan Martirosyan"]
 license = ""
 repository = ""
 edition = "2021"

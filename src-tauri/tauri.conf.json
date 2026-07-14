@@ -1,7 +1,7 @@
-{
+﻿{
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "DarkTasks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.darktasks.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -31,10 +31,13 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Levan Martirosyan",
+    "copyright": "Copyright (c) 2026 Levan Martirosyan",
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/darktasks-api"],
     "resources": {
-      "../.env": ".env"
+      "../.env": ".env",
+      "binaries/darktasks-api-x86_64-pc-windows-msvc.exe": "binaries/darktasks-api-x86_64-pc-windows-msvc.exe"
     },
     "icon": [
       "icons/32x32.png",

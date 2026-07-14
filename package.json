@@ -1,6 +1,8 @@
 {
   "name": "darktasks",
+  "version": "0.1.1",
   "private": true,
+  "author": "Levan Martirosyan",
   "sideEffects": false,
   "type": "module",
   "scripts": {

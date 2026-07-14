@@ -143,7 +143,14 @@ async function addActivity(userId: string | undefined, action: string, target: s
 app.use(
   "*",
   cors({
-    origin: process.env.CORS_ORIGIN?.split(",").map((origin) => origin.trim()) ?? "*",
+    origin: [
+      ...(process.env.CORS_ORIGIN?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? []),
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://tauri.localhost",
+      "https://tauri.localhost",
+      "tauri://localhost",
+    ],
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   }),
