@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  darktasks_lib::run();
+    darktasks_lib::run();
 }

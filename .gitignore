@@ -33,3 +33,5 @@ src-tauri/binaries/
 *.sw?
 
 .env
+darktasks.key
+.tauri/*.key

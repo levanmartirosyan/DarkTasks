@@ -12,7 +12,9 @@ import {
   LogOut,
   ChevronsLeft,
   Command,
+  Download,
   Menu,
+  RefreshCw,
   X,
   Users as UsersIcon,
 } from "lucide-react";
@@ -34,6 +36,7 @@ import { WindowControls } from "@/components/app/window-controls";
 import { cn } from "@/lib/utils";
 import { clearSessionToken, hasSessionToken } from "@/lib/auth-session";
 import { api } from "@/lib/api-client";
+import { checkForAppUpdate, downloadInstallAndRelaunch, isTauriRuntime } from "@/lib/app-updater";
 
 import { redirect } from "@tanstack/react-router";
 
@@ -311,6 +314,8 @@ function TopBar({
           <span className="hidden md:inline">{workspace ? "New task" : "New project"}</span>
         </Link>
 
+        <AppUpdateButton />
+
         <div className="relative">
           <button
             onClick={onNotif}
@@ -328,6 +333,92 @@ function TopBar({
         <WindowControls />
       </div>
     </header>
+  );
+}
+
+function AppUpdateButton() {
+  const [update, setUpdate] = useState<Awaited<ReturnType<typeof checkForAppUpdate>>>(null);
+  const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [message, setMessage] = useState("");
+
+  async function checkUpdate(showMessage = false) {
+    if (!isTauriRuntime() || checking || installing) return;
+
+    setChecking(true);
+    setMessage("");
+
+    try {
+      const nextUpdate = await checkForAppUpdate();
+      setUpdate(nextUpdate);
+      if (showMessage) setMessage(nextUpdate ? "" : "No update");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not check update");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function installUpdate() {
+    if (!update || installing) return;
+
+    setInstalling(true);
+    setMessage("");
+
+    try {
+      await downloadInstallAndRelaunch(update, setProgress);
+    } catch (error) {
+      setInstalling(false);
+      setMessage(error instanceof Error ? error.message : "Could not install update");
+    }
+  }
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const timeout = window.setTimeout(() => void checkUpdate(), 1500);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  if (!isTauriRuntime()) return null;
+
+  if (!update) {
+    return (
+      <div className="relative hidden sm:block">
+        <button
+          onClick={() => void checkUpdate(true)}
+          disabled={checking || installing}
+          className="rounded-xl border border-border bg-surface p-2 text-muted-foreground transition hover:bg-surface-2 hover:text-foreground disabled:opacity-60"
+          title={message || "Check for updates"}
+        >
+          <RefreshCw className={cn("h-[18px] w-[18px]", checking && "animate-spin")} />
+        </button>
+        {message && (
+          <div className="absolute right-0 top-full mt-2 whitespace-nowrap rounded-lg border border-border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-[var(--shadow-elevated)]">
+            {message}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative hidden sm:block">
+      <button
+        onClick={() => void installUpdate()}
+        disabled={installing}
+        className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition hover:bg-primary/15 disabled:opacity-70"
+        title={`Install DarkTasks ${update.version}`}
+      >
+        <Download className="h-4 w-4" />
+        {installing ? `${progress}%` : "Update"}
+      </button>
+      {message && (
+        <div className="absolute right-0 top-full mt-2 max-w-72 rounded-lg border border-destructive/30 bg-popover px-3 py-2 text-xs text-destructive shadow-[var(--shadow-elevated)]">
+          {message}
+        </div>
+      )}
+    </div>
   );
 }
 

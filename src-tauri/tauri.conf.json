@@ -31,6 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "externalBin": ["binaries/darktasks-api"],
     "resources": {
       "../.env": ".env"
@@ -44,6 +45,17 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFFMUM4QTRBRkExNUQwMTIKUldRUzBCWDZTb29jcnZ2MXZPaU9XVitoZ1NVNlVUWGVqbUQwT1Z1Wi9sSktURXhOa3lhbUFUQzEK",
+      "endpoints": [
+        "https://github.com/levanmartirosyan/DarkTasks/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
