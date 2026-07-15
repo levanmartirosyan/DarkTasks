@@ -1,9 +1,11 @@
 use std::{
     fs::{create_dir_all, OpenOptions},
     io::Write,
+    net::{SocketAddr, TcpStream},
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::Mutex,
+    time::Duration,
 };
 
 use tauri::{Manager, RunEvent};
@@ -55,7 +57,20 @@ fn write_api_log(app: &tauri::App, message: &str) {
     }
 }
 
+fn api_port_is_running() -> bool {
+    let address = SocketAddr::from(([127, 0, 0, 1], 8787));
+    TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_ok()
+}
+
 fn start_api_sidecar(app: &tauri::App) {
+    if api_port_is_running() {
+        write_api_log(
+            app,
+            "DarkTasks API sidecar skipped: port 8787 is already in use.",
+        );
+        return;
+    }
+
     let Ok(resource_dir) = app.path().resource_dir() else {
         write_api_log(app, "DarkTasks API sidecar skipped: resource directory was not found.");
         return;

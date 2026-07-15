@@ -1,5 +1,6 @@
-﻿import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { getVersion } from "@tauri-apps/api/app";
+import { useEffect, useState } from "react";
 import {
   User,
   Palette,
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { currentUser } from "@/lib/app-data";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { api } from "@/lib/api-client";
+import { isTauriRuntime } from "@/lib/app-updater";
 
 export const Route = createFileRoute("/app/settings")({
   component: SettingsPage,
@@ -150,6 +152,16 @@ function Switch({ defaultOn = false }: { defaultOn?: boolean }) {
 }
 
 function GeneralSection() {
+  const [appVersion, setAppVersion] = useState(__APP_VERSION__);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(__APP_VERSION__));
+  }, []);
+
   return (
     <>
       <Card title="Workspace" description="How your workspace shows up across the app.">
@@ -184,6 +196,13 @@ function GeneralSection() {
             </select>
           </Row>
         </div>
+      </Card>
+      <Card title="Application" description="Installed DarkTasks version.">
+        <Row label="Version" hint="Use this when checking updates or reporting an issue.">
+          <span className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium">
+            {appVersion}
+          </span>
+        </Row>
       </Card>
     </>
   );
@@ -389,3 +408,4 @@ function PlaceholderSection({ title, description }: { title: string; description
     </Card>
   );
 }
+
