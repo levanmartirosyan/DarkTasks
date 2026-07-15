@@ -3,7 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
 export function isTauriRuntime() {
-  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+  return (
+    typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
+  );
 }
 
 export async function checkForAppUpdate() {
@@ -11,7 +13,10 @@ export async function checkForAppUpdate() {
   return check();
 }
 
-export async function downloadInstallAndRelaunch(update: Update, onProgress?: (progress: number) => void) {
+export async function downloadInstallAndRelaunch(
+  update: Update,
+  onProgress?: (progress: number) => void,
+) {
   let downloaded = 0;
   let contentLength = 0;
 
