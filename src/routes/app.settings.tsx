@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+﻿import { createFileRoute } from "@tanstack/react-router";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState } from "react";
 import {
@@ -192,6 +192,7 @@ function GeneralSection() {
           <Row label="Timezone">
             <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none">
               <option>Europe / Amsterdam</option>
+              <option>Asia / Tbilisi</option>
               <option>America / New York</option>
             </select>
           </Row>
@@ -408,4 +409,3 @@ function PlaceholderSection({ title, description }: { title: string; description
     </Card>
   );
 }
-
