@@ -1,4 +1,5 @@
 import { relaunch } from "@tauri-apps/plugin-process";
+import { invoke } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
 export function isTauriRuntime() {
@@ -13,6 +14,8 @@ export async function checkForAppUpdate() {
 export async function downloadInstallAndRelaunch(update: Update, onProgress?: (progress: number) => void) {
   let downloaded = 0;
   let contentLength = 0;
+
+  await invoke("stop_api_sidecar_for_update");
 
   await update.downloadAndInstall((event) => {
     if (event.event === "Started") {

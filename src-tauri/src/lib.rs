@@ -122,6 +122,12 @@ fn stop_api_sidecar(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn stop_api_sidecar_for_update(app: tauri::AppHandle) -> Result<(), String> {
+    stop_api_sidecar(&app);
+    Ok(())
+}
+
+#[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     if !url.starts_with("https://www.linkedin.com/") {
         return Err("External URL is not allowed.".to_string());
@@ -143,7 +149,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![open_external_url])
+        .invoke_handler(tauri::generate_handler![
+            open_external_url,
+            stop_api_sidecar_for_update
+        ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
