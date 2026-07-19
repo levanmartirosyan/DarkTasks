@@ -51,6 +51,12 @@ const colors = [
   "oklch(0.7 0.18 340)",
 ];
 
+type CurrentUser = typeof users.$inferSelect;
+
+function isAdmin(user: CurrentUser | null | undefined) {
+  return user?.role === "Admin";
+}
+
 function isDuplicateTaskCodeError(error: unknown) {
   if (!error || typeof error !== "object") return false;
 
@@ -102,7 +108,11 @@ function initials(name: string) {
 }
 
 function usernameFromEmail(email: string, fallbackId: string) {
-  const base = email.split("@")[0]?.replace(/[^a-z0-9_.-]/gi, "").toLowerCase() || "user";
+  const base =
+    email
+      .split("@")[0]
+      ?.replace(/[^a-z0-9_.-]/gi, "")
+      .toLowerCase() || "user";
   return `${base}-${fallbackId.slice(0, 6)}`;
 }
 
@@ -135,13 +145,17 @@ async function findDuplicateIdentity({
     .limit(1);
 
   if (!existing) return null;
-  if (normalizedEmail && existing.email.toLowerCase() === normalizedEmail) return "Email already exists";
-  if (normalizedName && existing.name.toLowerCase() === normalizedName) return "Name already exists";
+  if (normalizedEmail && existing.email.toLowerCase() === normalizedEmail)
+    return "Email already exists";
+  if (normalizedName && existing.name.toLowerCase() === normalizedName)
+    return "Name already exists";
   return "Username already exists";
 }
 
 async function ensureUserIdentityIntegrity() {
-  await db.execute(sql`alter table users add column if not exists last_active_at timestamp with time zone`);
+  await db.execute(
+    sql`alter table users add column if not exists last_active_at timestamp with time zone`,
+  );
 
   await db.execute(sql`
     with ranked as (
@@ -196,9 +210,15 @@ async function ensureUserIdentityIntegrity() {
     where users.id = ranked.id and ranked.rn > 1
   `);
 
-  await db.execute(sql`create unique index if not exists users_username_lower_unique on users (lower(username))`);
-  await db.execute(sql`create unique index if not exists users_email_lower_unique on users (lower(email))`);
-  await db.execute(sql`create unique index if not exists users_name_lower_unique on users (lower(name))`);
+  await db.execute(
+    sql`create unique index if not exists users_username_lower_unique on users (lower(username))`,
+  );
+  await db.execute(
+    sql`create unique index if not exists users_email_lower_unique on users (lower(email))`,
+  );
+  await db.execute(
+    sql`create unique index if not exists users_name_lower_unique on users (lower(name))`,
+  );
   await db.execute(sql`
     update users
     set last_active_at = coalesce(
@@ -239,8 +259,82 @@ async function currentUserFromRequest(c: Context) {
     if (user) return user;
   }
 
-  const [firstUser] = await db.select().from(users).limit(1);
-  return firstUser ?? null;
+  return null;
+}
+
+async function visibleProjectIdsFor(user: CurrentUser | null | undefined) {
+  if (isAdmin(user)) return null;
+  if (!user) return new Set<string>();
+
+  const rows = await db
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, user.id));
+
+  return new Set(rows.map((row) => row.projectId));
+}
+
+async function canAccessProject(user: CurrentUser | null | undefined, projectId: string) {
+  if (isAdmin(user)) return true;
+  if (!user) return false;
+
+  const [membership] = await db
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, user.id)))
+    .limit(1);
+
+  return Boolean(membership);
+}
+
+async function canAccessTask(user: CurrentUser | null | undefined, taskId: string) {
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (!task) return { task: null, allowed: false };
+
+  return { task, allowed: await canAccessProject(user, task.projectId) };
+}
+
+async function repositoryBelongsToProject(repositoryId: string, projectId: string) {
+  const [repo] = await db
+    .select({ id: repositories.id })
+    .from(repositories)
+    .where(and(eq(repositories.id, repositoryId), eq(repositories.projectId, projectId)))
+    .limit(1);
+
+  return Boolean(repo);
+}
+
+async function userBelongsToProject(userId: string, projectId: string) {
+  const [member] = await db
+    .select({ userId: projectMembers.userId })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, projectId)))
+    .limit(1);
+
+  return Boolean(member);
+}
+
+async function visibleUsersFor(user: CurrentUser | null | undefined) {
+  const userRows = await db.select().from(users);
+  if (isAdmin(user)) return userRows;
+  if (!user) return [];
+
+  const visibleProjectIds = await visibleProjectIdsFor(user);
+  const memberRows = await db.select().from(projectMembers);
+  const visibleUserIds = new Set([user.id]);
+
+  for (const member of memberRows) {
+    if (visibleProjectIds?.has(member.projectId)) visibleUserIds.add(member.userId);
+  }
+
+  return userRows.filter((row) => visibleUserIds.has(row.id));
+}
+
+async function requireAdmin(c: Context) {
+  const user = await currentUserFromRequest(c);
+  if (!user) return { user, response: c.json({ error: "Unauthorized" }, 401) };
+  if (!isAdmin(user)) return { user, response: c.json({ error: "Admin access is required" }, 403) };
+  return { user, response: null };
 }
 
 async function nextTaskCode(prefix: string) {
@@ -271,7 +365,9 @@ app.use(
   "*",
   cors({
     origin: [
-      ...(process.env.CORS_ORIGIN?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? []),
+      ...(process.env.CORS_ORIGIN?.split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean) ?? []),
       "http://localhost:5173",
       "http://127.0.0.1:5173",
       "http://tauri.localhost",
@@ -312,7 +408,7 @@ api.use("*", async (c, next) => {
   }
 });
 
-async function getBootstrapData(currentUserId?: string) {
+async function getBootstrapData(currentUser?: CurrentUser | null) {
   const userRows = await db.select().from(users);
   const projectRows = await db.select().from(projects);
   const projectMemberRows = await db.select().from(projectMembers);
@@ -323,23 +419,72 @@ async function getBootstrapData(currentUserId?: string) {
   const taskLabelRows = await db.select().from(taskLabels);
   const subtaskRows = await db.select().from(subtasks);
   const commentRows = await db.select().from(taskComments);
-  const activityRows = await db.select().from(activityEvents).orderBy(desc(activityEvents.createdAt));
-  const notificationRows = await db.select().from(notifications).orderBy(desc(notifications.createdAt));
+  const activityRows = await db
+    .select()
+    .from(activityEvents)
+    .orderBy(desc(activityEvents.createdAt));
+  const notificationRows = await db
+    .select()
+    .from(notifications)
+    .orderBy(desc(notifications.createdAt));
 
-  const serializedUsers = serializeUsers(userRows);
+  const visibleProjectIds = await visibleProjectIdsFor(currentUser);
+  const visibleProjectRows = visibleProjectIds
+    ? projectRows.filter((project) => visibleProjectIds.has(project.id))
+    : projectRows;
+  const visibleProjectIdValues = new Set(visibleProjectRows.map((project) => project.id));
+  const visibleRepositoryRows = repositoryRows.filter((repo) =>
+    visibleProjectIdValues.has(repo.projectId),
+  );
+  const visibleMemberRows = projectMemberRows.filter((member) =>
+    visibleProjectIdValues.has(member.projectId),
+  );
+  const visibleTaskRows = taskRows.filter((task) => visibleProjectIdValues.has(task.projectId));
+  const visibleTaskIds = new Set(visibleTaskRows.map((task) => task.id));
+  const visibleTaskLabelRows = taskLabelRows.filter((join) => visibleTaskIds.has(join.taskId));
+  const visibleSubtaskRows = subtaskRows.filter((subtask) => visibleTaskIds.has(subtask.taskId));
+  const visibleCommentRows = commentRows.filter((comment) => visibleTaskIds.has(comment.taskId));
+  const visibleUserIds = new Set(visibleMemberRows.map((member) => member.userId));
+
+  if (currentUser) visibleUserIds.add(currentUser.id);
+
+  const visibleUserRows = isAdmin(currentUser)
+    ? userRows
+    : userRows.filter((user) => visibleUserIds.has(user.id));
+  const serializedUsers = serializeUsers(visibleUserRows);
+  const visibleNotifications = currentUser
+    ? notificationRows.filter(
+        (notification) => notification.userId === currentUser.id || notification.userId === null,
+      )
+    : notificationRows.filter((notification) => notification.userId === null);
 
   return {
     users: serializedUsers,
     currentUser:
-      serializedUsers.find((user) => user.id === currentUserId) ??
+      serializedUsers.find((user) => user.id === currentUser?.id) ??
       serializedUsers.find((user) => user.id === process.env.CURRENT_USER_ID) ??
       serializedUsers[0] ??
       null,
-    projects: serializeProjects(projectRows, repositoryRows, projectMemberRows, taskRows),
+    projects: serializeProjects(
+      visibleProjectRows,
+      visibleRepositoryRows,
+      visibleMemberRows,
+      visibleTaskRows,
+    ),
     defaultColumns: serializeColumns(columnRows),
-    tasks: serializeTasks(taskRows, labelRows, taskLabelRows, subtaskRows, commentRows),
-    activity: serializeActivity(activityRows),
-    notifications: serializeNotifications(notificationRows),
+    tasks: serializeTasks(
+      visibleTaskRows,
+      labelRows,
+      visibleTaskLabelRows,
+      visibleSubtaskRows,
+      visibleCommentRows,
+    ),
+    activity: serializeActivity(
+      isAdmin(currentUser)
+        ? activityRows
+        : activityRows.filter((row) => row.userId === currentUser?.id),
+    ),
+    notifications: serializeNotifications(visibleNotifications),
   };
 }
 
@@ -369,7 +514,9 @@ api.post("/auth/login", async (c) => {
   const matchingUsers = await db
     .select()
     .from(users)
-    .where(or(sql`lower(${users.username}) = ${username}`, sql`lower(${users.email}) = ${username}`))
+    .where(
+      or(sql`lower(${users.username}) = ${username}`, sql`lower(${users.email}) = ${username}`),
+    )
     .limit(5);
   const user = matchingUsers.find((candidate) => verifyPassword(password, candidate.passwordHash));
 
@@ -395,12 +542,17 @@ api.post("/auth/login", async (c) => {
 
 api.get("/bootstrap", async (c) => {
   const user = await currentUserFromRequest(c);
-  return c.json(await getBootstrapData(user?.id));
+  return c.json(await getBootstrapData(user));
 });
 
-api.get("/users", async (c) => c.json(serializeUsers(await db.select().from(users))));
+api.get("/users", async (c) =>
+  c.json(serializeUsers(await visibleUsersFor(await currentUserFromRequest(c)))),
+);
 
 api.post("/users", async (c) => {
+  const admin = await requireAdmin(c);
+  if (admin.response) return admin.response;
+
   const body = (await c.req.json()) as {
     name?: string;
     email?: string;
@@ -443,6 +595,9 @@ api.post("/users", async (c) => {
 });
 
 api.patch("/users/:id", async (c) => {
+  const admin = await requireAdmin(c);
+  if (admin.response) return admin.response;
+
   const id = c.req.param("id");
   const body = (await c.req.json()) as {
     name?: string;
@@ -481,7 +636,9 @@ api.patch("/users/:id", async (c) => {
 
 api.delete("/users/:id", async (c) => {
   const id = c.req.param("id");
-  const currentUser = await currentUserFromRequest(c);
+  const admin = await requireAdmin(c);
+  if (admin.response) return admin.response;
+  const currentUser = admin.user;
 
   if (currentUser?.id === id) return c.json({ error: "You cannot delete your own account" }, 400);
 
@@ -549,12 +706,32 @@ api.patch("/profile/password", async (c) => {
 });
 
 api.get("/projects", async (c) => {
+  const user = await currentUserFromRequest(c);
   const projectRows = await db.select().from(projects);
   const repositoryRows = await db.select().from(repositories);
   const memberRows = await db.select().from(projectMembers);
   const taskRows = await db.select().from(tasks);
+  const visibleProjectIds = await visibleProjectIdsFor(user);
+  const visibleProjectRows = visibleProjectIds
+    ? projectRows.filter((project) => visibleProjectIds.has(project.id))
+    : projectRows;
+  const visibleProjectIdValues = new Set(visibleProjectRows.map((project) => project.id));
+  const visibleRepositoryRows = repositoryRows.filter((repo) =>
+    visibleProjectIdValues.has(repo.projectId),
+  );
+  const visibleMemberRows = memberRows.filter((member) =>
+    visibleProjectIdValues.has(member.projectId),
+  );
+  const visibleTaskRows = taskRows.filter((task) => visibleProjectIdValues.has(task.projectId));
 
-  return c.json(serializeProjects(projectRows, repositoryRows, memberRows, taskRows));
+  return c.json(
+    serializeProjects(
+      visibleProjectRows,
+      visibleRepositoryRows,
+      visibleMemberRows,
+      visibleTaskRows,
+    ),
+  );
 });
 
 api.post("/projects", async (c) => {
@@ -572,7 +749,15 @@ api.post("/projects", async (c) => {
   const id = randomUUID();
   const slug = slugify(name);
   const currentUser = await currentUserFromRequest(c);
-  const memberIds = Array.from(new Set([currentUser?.id, ...(body.memberIds ?? [])].filter(Boolean)));
+  if (!currentUser) return c.json({ error: "Unauthorized" }, 401);
+
+  const memberIds = Array.from(
+    new Set(
+      [currentUser.id, ...(body.memberIds ?? [])].filter((userId): userId is string =>
+        Boolean(userId),
+      ),
+    ),
+  );
   const repoInputs = (body.repositories ?? []).filter((repo) => repo.name.trim());
   const repoRows = repoInputs.length
     ? repoInputs.map((repo, index) => ({
@@ -612,22 +797,40 @@ api.post("/projects", async (c) => {
   await db.insert(repositories).values(repoRows);
   await addActivity(currentUser?.id, "created project", name);
 
-  return c.json(serializeProjects([created], repoRows, memberIds.map((userId) => ({ projectId: id, userId })))[0], 201);
+  return c.json(
+    serializeProjects(
+      [created],
+      repoRows,
+      memberIds.map((userId) => ({ projectId: id, userId })),
+    )[0],
+    201,
+  );
 });
 
 api.get("/projects/:slug", async (c) => {
   const slug = c.req.param("slug");
+  const user = await currentUserFromRequest(c);
   const projectRows = await db.select().from(projects).where(eq(projects.slug, slug));
+  const projectRow = projectRows[0];
+
+  if (!projectRow) return c.json({ error: "Project not found" }, 404);
+  if (!(await canAccessProject(user, projectRow.id)))
+    return c.json({ error: "Project not found" }, 404);
+
   const repositoryRows = await db.select().from(repositories);
   const memberRows = await db.select().from(projectMembers);
   const project = serializeProjects(projectRows, repositoryRows, memberRows)[0];
 
-  if (!project) return c.json({ error: "Project not found" }, 404);
   return c.json(project);
 });
 
 api.patch("/projects/:id", async (c) => {
   const projectId = c.req.param("id");
+  const user = await currentUserFromRequest(c);
+
+  if (!(await canAccessProject(user, projectId)))
+    return c.json({ error: "Project not found" }, 404);
+
   const body = (await c.req.json()) as {
     name?: string;
     description?: string;
@@ -656,7 +859,6 @@ api.patch("/projects/:id", async (c) => {
   const repositoryRows = await db.select().from(repositories);
   const memberRows = await db.select().from(projectMembers);
   const taskRows = await db.select().from(tasks);
-  const user = await currentUserFromRequest(c);
   await addActivity(user?.id, "updated project", name);
 
   return c.json(serializeProjects([updated], repositoryRows, memberRows, taskRows)[0]);
@@ -664,12 +866,16 @@ api.patch("/projects/:id", async (c) => {
 
 api.delete("/projects/:id", async (c) => {
   const projectId = c.req.param("id");
+  const user = await currentUserFromRequest(c);
+
+  if (!(await canAccessProject(user, projectId)))
+    return c.json({ error: "Project not found" }, 404);
+
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
 
   if (!project) return c.json({ error: "Project not found" }, 404);
 
   await db.delete(projects).where(eq(projects.id, projectId));
-  const user = await currentUserFromRequest(c);
   await addActivity(user?.id, "deleted project", project.name);
 
   return c.json({ ok: true });
@@ -677,6 +883,9 @@ api.delete("/projects/:id", async (c) => {
 
 api.patch("/projects/:id/members", async (c) => {
   const projectId = c.req.param("id");
+  const admin = await requireAdmin(c);
+  if (admin.response) return admin.response;
+
   const body = (await c.req.json()) as { memberIds?: string[] };
   const memberIds = Array.from(new Set(body.memberIds ?? [])).filter(Boolean);
 
@@ -695,14 +904,18 @@ api.patch("/projects/:id/members", async (c) => {
   const repositoryRows = await db.select().from(repositories);
   const memberRows = await db.select().from(projectMembers);
   const taskRows = await db.select().from(tasks);
-  const user = await currentUserFromRequest(c);
-  await addActivity(user?.id, "updated project members", project.name);
+  await addActivity(admin.user?.id, "updated project members", project.name);
 
   return c.json(serializeProjects([project], repositoryRows, memberRows, taskRows)[0]);
 });
 
 api.post("/projects/:id/repositories", async (c) => {
   const projectId = c.req.param("id");
+  const user = await currentUserFromRequest(c);
+
+  if (!(await canAccessProject(user, projectId)))
+    return c.json({ error: "Project not found" }, 404);
+
   const body = (await c.req.json()) as { name?: string; color?: string };
   const name = body.name?.trim();
 
@@ -717,7 +930,6 @@ api.post("/projects/:id/repositories", async (c) => {
       color: body.color || colors[Math.floor(Math.random() * colors.length)],
     })
     .returning();
-  const user = await currentUserFromRequest(c);
   await addActivity(user?.id, "created repository", name);
 
   return c.json({ id: created.id, name: created.name, color: created.color }, 201);
@@ -725,10 +937,16 @@ api.post("/projects/:id/repositories", async (c) => {
 
 api.patch("/repositories/:id", async (c) => {
   const id = c.req.param("id");
+  const user = await currentUserFromRequest(c);
   const body = (await c.req.json()) as { name?: string; color?: string };
   const name = body.name?.trim();
 
   if (!name) return c.json({ error: "Repository name is required" }, 400);
+
+  const [repo] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1);
+  if (!repo) return c.json({ error: "Repository not found" }, 404);
+  if (!(await canAccessProject(user, repo.projectId)))
+    return c.json({ error: "Repository not found" }, 404);
 
   const [updated] = await db
     .update(repositories)
@@ -740,7 +958,6 @@ api.patch("/repositories/:id", async (c) => {
     .returning();
 
   if (!updated) return c.json({ error: "Repository not found" }, 404);
-  const user = await currentUserFromRequest(c);
   await addActivity(user?.id, "updated repository", name);
 
   return c.json({ id: updated.id, name: updated.name, color: updated.color });
@@ -748,33 +965,41 @@ api.patch("/repositories/:id", async (c) => {
 
 api.delete("/repositories/:id", async (c) => {
   const id = c.req.param("id");
+  const user = await currentUserFromRequest(c);
+  const [repo] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1);
+
+  if (!repo) return c.json({ error: "Repository not found" }, 404);
+  if (!(await canAccessProject(user, repo.projectId)))
+    return c.json({ error: "Repository not found" }, 404);
+
   const taskRows = await db.select().from(tasks).where(eq(tasks.repositoryId, id));
 
   if (taskRows.length > 0) {
     return c.json({ error: "Move or delete this repository's tasks before deleting it." }, 400);
   }
 
-  const [repo] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1);
-  if (!repo) return c.json({ error: "Repository not found" }, 404);
-
   await db.delete(repositories).where(eq(repositories.id, id));
-  const user = await currentUserFromRequest(c);
   await addActivity(user?.id, "deleted repository", repo.name);
 
   return c.json({ ok: true });
 });
 
 api.get("/tasks", async (c) => {
+  const user = await currentUserFromRequest(c);
   const taskRows = await db.select().from(tasks);
   const labelRows = await db.select().from(labels);
   const taskLabelRows = await db.select().from(taskLabels);
   const subtaskRows = await db.select().from(subtasks);
   const commentRows = await db.select().from(taskComments);
+  const visibleProjectIds = await visibleProjectIdsFor(user);
 
   const projectId = c.req.query("projectId");
   const status = c.req.query("status");
   const rows = taskRows.filter(
-    (task) => (!projectId || task.projectId === projectId) && (!status || task.status === status),
+    (task) =>
+      (visibleProjectIds === null || visibleProjectIds.has(task.projectId)) &&
+      (!projectId || task.projectId === projectId) &&
+      (!status || task.status === status),
   );
 
   return c.json(serializeTasks(rows, labelRows, taskLabelRows, subtaskRows, commentRows));
@@ -786,6 +1011,17 @@ api.post("/tasks", async (c) => {
   const title = body.title?.trim();
 
   if (!title) return c.json({ error: "Task title is required" }, 400);
+  if (!body.projectId) return c.json({ error: "Project is required" }, 400);
+  if (!body.repositoryId) return c.json({ error: "Repository is required" }, 400);
+  if (!body.assigneeId) return c.json({ error: "Assignee is required" }, 400);
+  if (!(await canAccessProject(user, body.projectId)))
+    return c.json({ error: "Project not found" }, 404);
+  if (!(await repositoryBelongsToProject(body.repositoryId, body.projectId))) {
+    return c.json({ error: "Repository does not belong to this project" }, 400);
+  }
+  if (!(await userBelongsToProject(body.assigneeId, body.projectId))) {
+    return c.json({ error: "Assignee must be a project member" }, 400);
+  }
 
   const codePrefix = body.codePrefix ?? "DT";
   const providedCode = body.code?.trim();
@@ -828,9 +1064,26 @@ api.post("/tasks", async (c) => {
 api.patch("/tasks/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
+  const user = await currentUserFromRequest(c);
+  const access = await canAccessTask(user, id);
+
+  if (!access.task) return c.json({ error: "Task not found" }, 404);
+  if (!access.allowed) return c.json({ error: "Task not found" }, 404);
+
   const title = body.title?.trim();
 
   if (!title) return c.json({ error: "Task title is required" }, 400);
+  if (!body.projectId) return c.json({ error: "Project is required" }, 400);
+  if (!body.repositoryId) return c.json({ error: "Repository is required" }, 400);
+  if (!body.assigneeId) return c.json({ error: "Assignee is required" }, 400);
+  if (!(await canAccessProject(user, body.projectId)))
+    return c.json({ error: "Project not found" }, 404);
+  if (!(await repositoryBelongsToProject(body.repositoryId, body.projectId))) {
+    return c.json({ error: "Repository does not belong to this project" }, 400);
+  }
+  if (!(await userBelongsToProject(body.assigneeId, body.projectId))) {
+    return c.json({ error: "Assignee must be a project member" }, 400);
+  }
 
   const [updated] = await db
     .update(tasks)
@@ -849,7 +1102,6 @@ api.patch("/tasks/:id", async (c) => {
     .returning();
 
   if (!updated) return c.json({ error: "Task not found" }, 404);
-  const user = await currentUserFromRequest(c);
   await addActivity(user?.id, "updated task", title);
   return c.json(serializeTasks([updated], [], [], [])[0]);
 });
@@ -857,8 +1109,12 @@ api.patch("/tasks/:id", async (c) => {
 api.patch("/tasks/:id/status", async (c) => {
   const id = c.req.param("id");
   const body = (await c.req.json()) as { status?: string };
+  const user = await currentUserFromRequest(c);
+  const access = await canAccessTask(user, id);
 
   if (!body.status) return c.json({ error: "Status is required" }, 400);
+  if (!access.task) return c.json({ error: "Task not found" }, 404);
+  if (!access.allowed) return c.json({ error: "Task not found" }, 404);
 
   const [updated] = await db
     .update(tasks)
@@ -867,7 +1123,6 @@ api.patch("/tasks/:id/status", async (c) => {
     .returning();
 
   if (!updated) return c.json({ error: "Task not found" }, 404);
-  const user = await currentUserFromRequest(c);
   await addActivity(user?.id, `moved task to ${body.status}`, updated.title);
   return c.json({ ok: true, task: updated });
 });
@@ -884,6 +1139,8 @@ api.post("/tasks/:id/comments", async (c) => {
 
   const user = await currentUserFromRequest(c);
   if (!user) return c.json({ error: "Unauthorized" }, 401);
+  if (!(await canAccessProject(user, task.projectId)))
+    return c.json({ error: "Task not found" }, 404);
 
   const [created] = await db
     .insert(taskComments)
@@ -951,40 +1208,45 @@ api.delete("/columns/:id", async (c) => {
 
 api.delete("/tasks/:id", async (c) => {
   const id = c.req.param("id");
-  const [task] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
-  await db.delete(tasks).where(eq(tasks.id, id));
   const user = await currentUserFromRequest(c);
-  await addActivity(user?.id, "deleted task", task?.title ?? "task");
+  const access = await canAccessTask(user, id);
+
+  if (!access.task) return c.json({ error: "Task not found" }, 404);
+  if (!access.allowed) return c.json({ error: "Task not found" }, 404);
+
+  await db.delete(tasks).where(eq(tasks.id, id));
+  await addActivity(user?.id, "deleted task", access.task.title);
   return c.json({ ok: true });
 });
 
-api.get("/activity", async (c) =>
-  c.json(
-    serializeActivity(
-      await db.select().from(activityEvents).orderBy(desc(activityEvents.createdAt)),
-    ),
-  ),
-);
+api.get("/activity", async (c) => {
+  const user = await currentUserFromRequest(c);
+  const rows = await db.select().from(activityEvents).orderBy(desc(activityEvents.createdAt));
 
-api.get("/notifications", async (c) =>
-  c.json(
-    serializeNotifications(
-      await db.select().from(notifications).orderBy(desc(notifications.createdAt)),
-    ),
-  ),
-);
+  return c.json(
+    serializeActivity(isAdmin(user) ? rows : rows.filter((row) => row.userId === user?.id)),
+  );
+});
+
+api.get("/notifications", async (c) => {
+  const user = await currentUserFromRequest(c);
+  const rows = await db.select().from(notifications).orderBy(desc(notifications.createdAt));
+  const visibleRows = user
+    ? rows.filter((notification) => notification.userId === user.id || notification.userId === null)
+    : rows.filter((notification) => notification.userId === null);
+
+  return c.json(serializeNotifications(visibleRows));
+});
 
 api.patch("/notifications/read-all", async (c) => {
   const user = await currentUserFromRequest(c);
 
-  if (user) {
-    await db
-      .update(notifications)
-      .set({ read: true })
-      .where(or(eq(notifications.userId, user.id), isNull(notifications.userId)));
-  } else {
-    await db.update(notifications).set({ read: true });
-  }
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  await db
+    .update(notifications)
+    .set({ read: true })
+    .where(or(eq(notifications.userId, user.id), isNull(notifications.userId)));
 
   return c.json({ ok: true });
 });
