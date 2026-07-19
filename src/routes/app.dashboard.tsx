@@ -10,6 +10,7 @@ import {
   Activity as ActivityIcon,
 } from "lucide-react";
 import { activity, currentUser, projects, tasks, userById, priorityMeta } from "@/lib/app-data";
+import { DataRefreshButton } from "@/components/app/data-refresh-button";
 import { UserAvatar, AvatarStack } from "@/components/app/user-avatar";
 
 export const Route = createFileRoute("/app/dashboard")({
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/app/dashboard")({
 
 function Dashboard() {
   const [rangeDays, setRangeDays] = useState(14);
+  const [, setVersion] = useState(0);
   const assigned = tasks.filter((t) => t.assigneeId === currentUser.id);
   const completed = tasks.filter((t) => t.status === "done");
   const overdue = tasks.filter((t) => t.priority === "urgent" || t.priority === "high").slice(0, 3);
@@ -68,13 +70,14 @@ function Dashboard() {
         <div>
           <div className="text-xs text-muted-foreground">{todayLabel}</div>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Good morning, {currentUser.name || "there"}.
+            Welcome Back, {currentUser.name}.
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Here's what's happening across your workspace.
           </p>
         </div>
         <div className="flex gap-2">
+          <DataRefreshButton onRefreshed={() => setVersion((value) => value + 1)} />
           <button
             onClick={() => setRangeDays(7)}
             className={`rounded-xl border border-border bg-surface px-3.5 py-2 text-sm hover:bg-surface-2 transition ${rangeDays === 7 ? "border-primary/40 bg-primary/10 text-foreground" : ""}`}
@@ -319,21 +322,30 @@ function StatCard({
 }
 
 function ChartPlaceholder({ bars }: { bars: number[] }) {
+  const labelEvery = bars.length > 60 ? 10 : bars.length > 30 ? 5 : bars.length > 14 ? 3 : 1;
+
   return (
-    <div className="mt-6 h-48 flex items-end gap-1.5">
-      {bars.map((h, i) => (
-        <div key={i} className="group relative flex-1">
-          <div
-            className="w-full rounded-t-md transition-all"
-            style={{
-              height: `${h}%`,
-              background: `linear-gradient(180deg, oklch(0.66 0.19 275 / ${0.4 + h / 200}), oklch(0.66 0.19 275 / 0.1))`,
-              borderTop: "2px solid oklch(0.66 0.19 275)",
-            }}
-          />
-          <div className="mt-1.5 text-center text-[9px] text-muted-foreground">{i + 1}</div>
-        </div>
-      ))}
+    <div className="mt-6 h-48 overflow-hidden">
+      <div
+        className="grid h-full items-end gap-1"
+        style={{ gridTemplateColumns: `repeat(${bars.length}, minmax(0, 1fr))` }}
+      >
+        {bars.map((h, i) => (
+          <div key={i} className="group relative min-w-0">
+            <div
+              className="w-full rounded-t-md transition-all"
+              style={{
+                height: `${h}%`,
+                background: `linear-gradient(180deg, oklch(0.66 0.19 275 / ${0.4 + h / 200}), oklch(0.66 0.19 275 / 0.1))`,
+                borderTop: "2px solid oklch(0.66 0.19 275)",
+              }}
+            />
+            <div className="mt-1.5 h-3 text-center text-[9px] text-muted-foreground">
+              {i % labelEvery === 0 || i === bars.length - 1 ? i + 1 : ""}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

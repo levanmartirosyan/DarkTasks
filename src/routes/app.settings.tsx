@@ -1,40 +1,40 @@
 ﻿import { createFileRoute } from "@tanstack/react-router";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState } from "react";
-import {
-  User,
-  Palette,
-  UsersIcon,
-  GitBranch,
-  FolderKanban,
-  Bell,
-  Settings as SettingsIcon,
-  Check,
-  Sparkles,
-} from "lucide-react";
+import { User, Bell, Settings as SettingsIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { currentUser } from "@/lib/app-data";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { api } from "@/lib/api-client";
 import { isTauriRuntime } from "@/lib/app-updater";
 
+const settingsTabIds = ["general", "profile", "notifications"] as const;
+type SettingsTab = (typeof settingsTabIds)[number];
+
 export const Route = createFileRoute("/app/settings")({
   component: SettingsPage,
+  validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } => ({
+    tab: settingsTabIds.includes(search.tab as SettingsTab)
+      ? (search.tab as SettingsTab)
+      : undefined,
+  }),
   head: () => ({ meta: [{ title: "Settings - DarkTasks" }] }),
 });
 
 const sections = [
   { id: "general", label: "General", icon: SettingsIcon },
-  { id: "appearance", label: "Appearance", icon: Palette },
   { id: "profile", label: "Profile", icon: User },
-  { id: "users", label: "Users", icon: UsersIcon },
-  { id: "repositories", label: "Repositories", icon: GitBranch },
-  { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "notifications", label: "Notifications", icon: Bell },
-];
+] satisfies Array<{ id: SettingsTab; label: string; icon: typeof SettingsIcon }>;
 
 function SettingsPage() {
-  const [active, setActive] = useState("general");
+  const { tab } = Route.useSearch();
+  const [active, setActive] = useState<SettingsTab>(tab ?? "general");
+
+  useEffect(() => {
+    if (tab) setActive(tab);
+  }, [tab]);
+
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6">
@@ -64,27 +64,8 @@ function SettingsPage() {
 
         <div className="space-y-6">
           {active === "general" && <GeneralSection />}
-          {active === "appearance" && <AppearanceSection />}
           {active === "profile" && <ProfileSection />}
           {active === "notifications" && <NotificationSection />}
-          {active === "users" && (
-            <PlaceholderSection
-              title="Users"
-              description="Manage team members from the Users page."
-            />
-          )}
-          {active === "repositories" && (
-            <PlaceholderSection
-              title="Repositories"
-              description="Manage repositories from within each project."
-            />
-          )}
-          {active === "projects" && (
-            <PlaceholderSection
-              title="Projects"
-              description="Create and manage projects from the Projects page."
-            />
-          )}
         </div>
       </div>
     </div>
@@ -164,40 +145,6 @@ function GeneralSection() {
 
   return (
     <>
-      <Card title="Workspace" description="How your workspace shows up across the app.">
-        <div className="space-y-0">
-          <div className="grid grid-cols-[100px_1fr] items-center gap-4 pb-4">
-            <div className="text-sm font-medium">Icon</div>
-            <div className="flex items-center gap-3">
-              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-surface-2 text-2xl">
-                D
-              </div>
-              <button className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs hover:bg-surface-2 transition">
-                Change
-              </button>
-            </div>
-          </div>
-          <Row label="Workspace name">
-            <input
-              defaultValue="Nyctoswear"
-              className="w-64 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-ring/40 transition"
-            />
-          </Row>
-          <Row label="URL slug" hint="darktasks.app/nyctoswear">
-            <input
-              defaultValue="nyctoswear"
-              className="w-64 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-ring/40 transition"
-            />
-          </Row>
-          <Row label="Timezone">
-            <select className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none">
-              <option>Europe / Amsterdam</option>
-              <option>Asia / Tbilisi</option>
-              <option>America / New York</option>
-            </select>
-          </Row>
-        </div>
-      </Card>
       <Card title="Application" description="Installed DarkTasks version.">
         <Row label="Version" hint="Use this when checking updates or reporting an issue.">
           <span className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium">
@@ -209,115 +156,73 @@ function GeneralSection() {
   );
 }
 
-function AppearanceSection() {
-  const accents = [
-    { name: "Violet", val: "oklch(0.66 0.19 275)" },
-    { name: "Blue", val: "oklch(0.66 0.18 235)" },
-    { name: "Emerald", val: "oklch(0.7 0.15 165)" },
-    { name: "Rose", val: "oklch(0.7 0.18 340)" },
-    { name: "Amber", val: "oklch(0.78 0.14 75)" },
-  ];
-  return (
-    <>
-      <Card title="Theme" description="This workspace uses a comfortable dark theme.">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl border-2 border-primary/60 bg-background p-3 shadow-[var(--shadow-glow)]">
-            <div className="mb-3 h-16 rounded-lg aurora-bg" />
-            <div className="flex items-center gap-2 text-sm">
-              <Check className="h-4 w-4 text-primary" /> Dark (default)
-            </div>
-          </div>
-          <div className="rounded-xl border border-border bg-surface p-3 opacity-60">
-            <div className="mb-3 h-16 rounded-lg bg-gradient-to-br from-white to-slate-200" />
-            <div className="text-sm text-muted-foreground">Light (coming soon)</div>
-          </div>
-        </div>
-      </Card>
-      <Card title="Accent color" description="Pick your workspace accent.">
-        <div className="flex flex-wrap gap-3">
-          {accents.map((a, i) => (
-            <button
-              key={a.name}
-              className={cn("group flex flex-col items-center gap-1.5", i === 0 && "")}
-            >
-              <span
-                className={cn(
-                  "h-11 w-11 rounded-2xl transition",
-                  i === 0 && "ring-2 ring-offset-2 ring-offset-background ring-primary",
-                )}
-                style={{
-                  background: `linear-gradient(135deg, ${a.val}, color-mix(in oklab, ${a.val} 60%, oklch(0.5 0.15 275)))`,
-                }}
-              />
-              <span className="text-[11px] text-muted-foreground">{a.name}</span>
-            </button>
-          ))}
-        </div>
-      </Card>
-      <Card title="Motion">
-        <Row label="Reduce motion" hint="Minimize animations across the app.">
-          <Switch />
-        </Row>
-        <Row label="Smooth transitions" hint="Elegant transitions between views.">
-          <Switch defaultOn />
-        </Row>
-      </Card>
-    </>
-  );
-}
-
 function ProfileSection() {
   const [name, setName] = useState(currentUser.name);
   const [email, setEmail] = useState(currentUser.email);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [status, setStatus] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [profileStatus, setProfileStatus] = useState("");
+  const [passwordStatus, setPasswordStatus] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   async function saveProfile() {
-    if (saving) return;
-    setSaving(true);
-    setStatus("");
+    if (profileSaving) return;
+    setProfileSaving(true);
+    setProfileStatus("");
 
     try {
       const updated = (await api.updateProfile({ name, email })) as typeof currentUser;
       Object.assign(currentUser, updated);
-      setStatus("Profile saved.");
+      setProfileStatus("Profile saved.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not save profile.");
+      setProfileStatus(error instanceof Error ? error.message : "Could not save profile.");
     } finally {
-      setSaving(false);
+      setProfileSaving(false);
     }
   }
 
   async function savePassword() {
-    if (saving) return;
-    setSaving(true);
-    setStatus("");
+    if (passwordSaving) return;
+    setPasswordStatus("");
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordStatus("Enter your current password and the new password twice.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordStatus("New passwords do not match.");
+      return;
+    }
+
+    setPasswordSaving(true);
 
     try {
       await api.changePassword({ currentPassword, newPassword });
       setCurrentPassword("");
       setNewPassword("");
-      setStatus("Password changed.");
+      setConfirmPassword("");
+      setPasswordStatus("Password changed.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not change password.");
+      setPasswordStatus(error instanceof Error ? error.message : "Could not change password.");
     } finally {
-      setSaving(false);
+      setPasswordSaving(false);
     }
   }
 
   return (
-    <Card title="Your profile">
+    <Card title="Your profile" description="Manage your account details and password.">
       <div className="flex items-center gap-4 pb-5">
         <UserAvatar user={currentUser} size={64} />
         <div className="min-w-0">
           <div className="text-base font-semibold">{currentUser.name}</div>
           <div className="text-xs text-muted-foreground">{currentUser.email}</div>
         </div>
-        <button className="ml-auto rounded-lg border border-border bg-surface px-3 py-1.5 text-xs hover:bg-surface-2 transition">
-          Change avatar
-        </button>
+        <div className="ml-auto rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground">
+          Avatar locked
+        </div>
       </div>
       <Row label="Full name">
         <input
@@ -333,11 +238,27 @@ function ProfileSection() {
           className="w-64 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-ring/40"
         />
       </Row>
-      <Row label="Role" hint="Contact an admin to change.">
-        <span className="rounded-md gradient-primary px-2 py-1 text-xs font-medium text-primary-foreground">
-          {currentUser.role}
-        </span>
+      <Row label="Role" hint="Role is managed by the app owner.">
+        <div className="flex justify-end">
+          <span className="rounded-md gradient-primary px-2 py-1 text-xs font-medium text-primary-foreground">
+            {currentUser.role}
+          </span>
+        </div>
       </Row>
+      {profileStatus && <div className="pt-3 text-xs text-muted-foreground">{profileStatus}</div>}
+      <div className="mt-5 flex justify-end border-t border-border/60 pt-4">
+        <button
+          disabled={profileSaving}
+          onClick={() => void saveProfile()}
+          className="rounded-lg gradient-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-95 disabled:opacity-60"
+        >
+          {profileSaving ? "Saving..." : "Save profile"}
+        </button>
+      </div>
+      <div className="mt-6 border-t border-border/60 pt-5">
+        <h4 className="text-sm font-semibold">Password</h4>
+        <p className="mt-1 text-xs text-muted-foreground">Change the password for this account.</p>
+      </div>
       <Row label="Password" hint="Change the password for this account.">
         <div className="grid gap-2">
           <input
@@ -354,23 +275,23 @@ function ProfileSection() {
             placeholder="New password"
             className="w-64 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-ring/40"
           />
+          <input
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            type="password"
+            placeholder="Confirm new password"
+            className="w-64 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-ring/40"
+          />
         </div>
       </Row>
-      {status && <div className="pt-3 text-xs text-muted-foreground">{status}</div>}
+      {passwordStatus && <div className="pt-3 text-xs text-muted-foreground">{passwordStatus}</div>}
       <div className="mt-5 flex justify-end gap-2 border-t border-border/60 pt-4">
         <button
-          disabled={saving}
+          disabled={passwordSaving}
           onClick={() => void savePassword()}
           className="rounded-lg border border-border bg-surface px-3 py-2 text-sm transition hover:bg-surface-2 disabled:opacity-60"
         >
-          Change password
-        </button>
-        <button
-          disabled={saving}
-          onClick={() => void saveProfile()}
-          className="rounded-lg gradient-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-95 disabled:opacity-60"
-        >
-          Save profile
+          {passwordSaving ? "Changing..." : "Change password"}
         </button>
       </div>
     </Card>
@@ -395,17 +316,6 @@ function NotificationSection() {
       <Row label="Email notifications" hint="Send to alex@darktasks.local.">
         <Switch defaultOn />
       </Row>
-    </Card>
-  );
-}
-
-function PlaceholderSection({ title, description }: { title: string; description: string }) {
-  return (
-    <Card title={title} description={description}>
-      <div className="grid place-items-center rounded-xl border border-dashed border-border py-12 text-center">
-        <Sparkles className="h-6 w-6 text-muted-foreground" />
-        <div className="mt-2 text-sm text-muted-foreground">Managed elsewhere in the app.</div>
-      </div>
     </Card>
   );
 }

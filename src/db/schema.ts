@@ -23,6 +23,7 @@ export const users = pgTable("users", {
   avatar: text("avatar").notNull().default(""),
   initials: text("initials").notNull(),
   color: text("color").notNull(),
+  lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

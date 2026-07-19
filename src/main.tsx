@@ -12,6 +12,16 @@ if (!rootElement) {
   throw new Error("Root element #root was not found.");
 }
 
+function isTauriRuntime() {
+  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+}
+
+if (isTauriRuntime() || import.meta.env.PROD) {
+  window.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+}
+
 function BootstrappedApp() {
   const [ready, setReady] = useState(false);
 

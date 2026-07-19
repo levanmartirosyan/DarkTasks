@@ -112,6 +112,15 @@ export const api = {
       body: JSON.stringify(project),
     }),
   project: (slug: string) => request(`/projects/${slug}`),
+  updateProject: (projectId: string, project: { name: string; description: string; icon: string }) =>
+    request(`/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify(project),
+    }),
+  deleteProject: (projectId: string) =>
+    request(`/projects/${projectId}`, {
+      method: "DELETE",
+    }),
   updateProjectMembers: (projectId: string, memberIds: string[]) =>
     request(`/projects/${projectId}/members`, {
       method: "PATCH",
@@ -121,6 +130,15 @@ export const api = {
     request(`/projects/${projectId}/repositories`, {
       method: "POST",
       body: JSON.stringify(repository),
+    }),
+  updateRepository: (repositoryId: string, repository: { name: string; color?: string }) =>
+    request(`/repositories/${repositoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(repository),
+    }),
+  deleteRepository: (repositoryId: string) =>
+    request(`/repositories/${repositoryId}`, {
+      method: "DELETE",
     }),
   tasks: (params?: { projectId?: string; status?: string }) => {
     const query = new URLSearchParams();

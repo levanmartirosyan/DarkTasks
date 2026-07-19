@@ -57,7 +57,8 @@
   --shadow-glow: 0 0 0 1px oklch(0.62 0.19 275 / 0.35), 0 8px 32px -8px oklch(0.62 0.19 275 / 0.45);
 }
 
-:root, .dark {
+:root,
+.dark {
   --radius: 0.875rem;
 
   /* Deep, comfortable slate — not pure black */
@@ -121,8 +122,10 @@
 @layer base {
   * {
     border-color: var(--color-border);
+    user-select: none;
   }
-  html, body {
+  html,
+  body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -130,19 +133,54 @@
     text-rendering: optimizeLegibility;
   }
   body {
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family:
+      "Inter",
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      sans-serif;
   }
-  ::selection { background: oklch(0.66 0.19 275 / 0.4); }
+  button,
+  a,
+  select,
+  [role="button"] {
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+  }
+  input,
+  textarea {
+    -webkit-app-region: no-drag;
+  }
+  button:disabled,
+  select:disabled,
+  input:disabled,
+  textarea:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  ::selection {
+    background: oklch(0.66 0.19 275 / 0.4);
+  }
   /* Slim scrollbars */
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
   ::-webkit-scrollbar-thumb {
     background: oklch(1 0 0 / 0.08);
     border-radius: 999px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
-  ::-webkit-scrollbar-thumb:hover { background: oklch(1 0 0 / 0.16); background-clip: padding-box; border: 2px solid transparent; }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(1 0 0 / 0.16);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
 }
 
 @utility glass {
@@ -153,13 +191,23 @@
 }
 
 @utility surface-card {
-  background: linear-gradient(180deg, color-mix(in oklab, var(--color-card) 100%, transparent) 0%, color-mix(in oklab, var(--color-surface) 100%, transparent) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--color-card) 100%, transparent) 0%,
+    color-mix(in oklab, var(--color-surface) 100%, transparent) 100%
+  );
   border: 1px solid var(--color-border);
-  box-shadow: 0 1px 0 0 oklch(1 0 0 / 0.03) inset, 0 8px 24px -12px oklch(0 0 0 / 0.4);
+  box-shadow:
+    0 1px 0 0 oklch(1 0 0 / 0.03) inset,
+    0 8px 24px -12px oklch(0 0 0 / 0.4);
 }
 
 @utility gradient-primary {
-  background-image: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-glow) 100%);
+  background-image: linear-gradient(
+    135deg,
+    var(--color-primary) 0%,
+    var(--color-primary-glow) 100%
+  );
 }
 
 @utility gradient-text {
@@ -179,31 +227,67 @@
 
 @utility ring-focus {
   outline: none;
-  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-ring);
+  box-shadow:
+    0 0 0 2px var(--color-background),
+    0 0 0 4px var(--color-ring);
 }
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 @keyframes shimmer {
-  0% { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
 }
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
 }
 
-@utility animate-fade-in { animation: fade-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
-@utility animate-scale-in { animation: scale-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
-@utility animate-float { animation: float 6s ease-in-out infinite; }
+@utility animate-fade-in {
+  animation: fade-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility animate-scale-in {
+  animation: scale-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility animate-float {
+  animation: float 6s ease-in-out infinite;
+}
 
 @utility hover-lift {
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, border-color 0.25s ease;
-  &:hover { transform: translateY(-2px); border-color: var(--color-border-strong); box-shadow: var(--shadow-elevated); }
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+  &:hover {
+    transform: translateY(-2px);
+    border-color: var(--color-border-strong);
+    box-shadow: var(--shadow-elevated);
+  }
 }

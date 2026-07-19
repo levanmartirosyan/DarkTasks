@@ -1,13 +1,26 @@
-﻿import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Search, LayoutGrid, List, Filter, X } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  Filter,
+  LayoutGrid,
+  List,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useState } from "react";
-import { currentUser, projects, users, userById, type Project } from "@/lib/app-data";
+
 import { AvatarStack } from "@/components/app/user-avatar";
-import { api } from "@/lib/api-client";
+import { DataRefreshButton } from "@/components/app/data-refresh-button";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api-client";
+import { currentUser, projects, users, userById, type Project } from "@/lib/app-data";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/projects/")({
   component: ProjectsPage,
@@ -18,12 +31,22 @@ function ProjectsPage() {
   const [q, setQ] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState<Project | null>(null);
   const [mineOnly, setMineOnly] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [, setVersion] = useState(0);
   const filtered = projects.filter(
     (p) =>
       p.name.toLowerCase().includes(q.toLowerCase()) &&
       (!mineOnly || p.memberIds.includes(currentUser.id)),
   );
+
+  function replaceProject(updated: Project) {
+    const index = projects.findIndex((project) => project.id === updated.id);
+    if (index >= 0) projects[index] = updated;
+    setVersion((value) => value + 1);
+  }
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 space-y-6">
@@ -34,12 +57,15 @@ function ProjectsPage() {
             Organize work across teams and repositories.
           </p>
         </div>
-        <Button
-          onClick={() => setCreating(true)}
-          className="rounded-xl gradient-primary px-3.5 py-2 text-primary-foreground shadow-[var(--shadow-glow)] hover:opacity-95"
-        >
-          <Plus className="h-4 w-4" /> New project
-        </Button>
+        <div className="flex items-center gap-2">
+          <DataRefreshButton onRefreshed={() => setVersion((value) => value + 1)} />
+          <Button
+            onClick={() => setCreating(true)}
+            className="rounded-xl gradient-primary px-3.5 py-2 text-primary-foreground shadow-[var(--shadow-glow)] hover:opacity-95"
+          >
+            <Plus className="h-4 w-4" /> New project
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -55,7 +81,10 @@ function ProjectsPage() {
         <Button
           variant="outline"
           onClick={() => setMineOnly((value) => !value)}
-          className={`rounded-xl border-border bg-surface px-3 py-2 hover:bg-surface-2 ${mineOnly ? "border-primary/40 bg-primary/10 text-foreground" : ""}`}
+          className={cn(
+            "rounded-xl border-border bg-surface px-3 py-2 hover:bg-surface-2",
+            mineOnly && "border-primary/40 bg-primary/10 text-foreground",
+          )}
         >
           <Filter className="h-4 w-4" /> Filter
         </Button>
@@ -64,7 +93,10 @@ function ProjectsPage() {
             variant="ghost"
             size="icon"
             onClick={() => setView("grid")}
-            className={`h-8 w-9 rounded-lg ${view === "grid" ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            className={cn(
+              "h-8 w-9 rounded-lg",
+              view === "grid" ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
           >
             <LayoutGrid className="h-4 w-4" />
           </Button>
@@ -72,7 +104,10 @@ function ProjectsPage() {
             variant="ghost"
             size="icon"
             onClick={() => setView("list")}
-            className={`h-8 w-9 rounded-lg ${view === "list" ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            className={cn(
+              "h-8 w-9 rounded-lg",
+              view === "list" ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
           >
             <List className="h-4 w-4" />
           </Button>
@@ -82,56 +117,68 @@ function ProjectsPage() {
       {view === "grid" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => (
-            <Link
+            <div
               key={p.id}
-              to="/app/projects/$slug"
-              params={{ slug: p.slug }}
-              className="group rounded-2xl border border-border bg-card p-5 surface-card hover-lift"
+              className="group relative rounded-2xl border border-border bg-card p-5 surface-card hover-lift"
             >
-              <div className="flex items-start gap-3">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-surface-2 text-xl">
-                  {p.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-base font-semibold">{p.name}</div>
-                  <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                    {p.description}
+              <Link to="/app/projects/$slug" params={{ slug: p.slug }} className="block">
+                <div className="flex items-start gap-3 pr-8">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-surface-2 text-xl">
+                    {p.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-base font-semibold">{p.name}</div>
+                    <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                      {p.description}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="mt-5 flex flex-wrap gap-1.5">
-                {p.repositories.map((r) => (
-                  <span
-                    key={r.id}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.color }} />
-                    {r.name}
-                  </span>
-                ))}
-              </div>
+                <div className="mt-5 flex flex-wrap gap-1.5">
+                  {p.repositories.map((r) => (
+                    <span
+                      key={r.id}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.color }} />
+                      {r.name}
+                    </span>
+                  ))}
+                </div>
 
-              <div className="mt-5">
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>Progress</span>
-                  <span>{p.progress}%</span>
+                <div className="mt-5">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Progress</span>
+                    <span>{p.progress}%</span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3">
+                    <div
+                      className="h-full gradient-primary transition-all group-hover:brightness-110"
+                      style={{ width: `${p.progress}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3">
-                  <div
-                    className="h-full gradient-primary transition-all group-hover:brightness-110"
-                    style={{ width: `${p.progress}%` }}
-                  />
-                </div>
-              </div>
 
-              <div className="mt-5 flex items-center justify-between border-t border-border/60 pt-4">
-                <AvatarStack users={p.memberIds.map(userById)} size={24} />
-                <div className="text-[11px] text-muted-foreground">
-                  {p.taskCount} tasks - {p.lastActivity}
+                <div className="mt-5 flex items-center justify-between border-t border-border/60 pt-4">
+                  <AvatarStack users={p.memberIds.map(userById)} size={24} />
+                  <div className="text-[11px] text-muted-foreground">
+                    {p.taskCount} tasks - {p.lastActivity}
+                  </div>
                 </div>
-              </div>
-            </Link>
+              </Link>
+              <ProjectActions
+                open={openMenuId === p.id}
+                onToggle={() => setOpenMenuId((id) => (id === p.id ? null : p.id))}
+                onEdit={() => {
+                  setEditing(p);
+                  setOpenMenuId(null);
+                }}
+                onDelete={() => {
+                  setDeleting(p);
+                  setOpenMenuId(null);
+                }}
+              />
+            </div>
           ))}
         </div>
       ) : (
@@ -144,13 +191,14 @@ function ProjectsPage() {
                 <th className="px-4 py-3 text-left font-medium">Members</th>
                 <th className="px-4 py-3 text-left font-medium">Progress</th>
                 <th className="px-4 py-3 text-left font-medium">Activity</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((p) => (
                 <tr
                   key={p.id}
-                  className="border-b border-border/60 last:border-0 hover:bg-surface-2 transition cursor-pointer"
+                  className="border-b border-border/60 last:border-0 hover:bg-surface-2 transition"
                 >
                   <td className="px-4 py-3">
                     <Link
@@ -180,6 +228,20 @@ function ProjectsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{p.lastActivity}</td>
+                  <td className="relative px-4 py-3 text-right">
+                    <ProjectActions
+                      open={openMenuId === p.id}
+                      onToggle={() => setOpenMenuId((id) => (id === p.id ? null : p.id))}
+                      onEdit={() => {
+                        setEditing(p);
+                        setOpenMenuId(null);
+                      }}
+                      onDelete={() => {
+                        setDeleting(p);
+                        setOpenMenuId(null);
+                      }}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -188,7 +250,192 @@ function ProjectsPage() {
       )}
 
       {creating && <CreateProjectModal onClose={() => setCreating(false)} />}
+      {editing && (
+        <EditProjectModal
+          project={editing}
+          onClose={() => setEditing(null)}
+          onUpdated={(updated) => {
+            replaceProject(updated);
+            setEditing(null);
+          }}
+        />
+      )}
+      {deleting && (
+        <DeleteProjectModal
+          project={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            const index = projects.findIndex((project) => project.id === deleting.id);
+            if (index >= 0) projects.splice(index, 1);
+            setDeleting(null);
+            setVersion((value) => value + 1);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function ProjectActions({
+  open,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="absolute right-3 top-3 z-10">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onToggle();
+        }}
+        className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </Button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={onToggle} />
+          <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-[var(--shadow-elevated)]">
+            <button
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onEdit();
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2 transition"
+            >
+              <Pencil className="h-4 w-4" /> Edit project
+            </button>
+            <button
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onDelete();
+              }}
+              className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 transition"
+            >
+              <Trash2 className="h-4 w-4" /> Delete project
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EditProjectModal({
+  project,
+  onClose,
+  onUpdated,
+}: {
+  project: Project;
+  onClose: () => void;
+  onUpdated: (project: Project) => void;
+}) {
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description);
+  const [icon, setIcon] = useState(project.icon);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    if (saving || !name.trim()) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      const updated = (await api.updateProject(project.id, {
+        name,
+        description,
+        icon,
+      })) as Project;
+      onUpdated(updated);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not update project.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ProjectModalShell title="Edit project" description="Update project identity and description." onClose={onClose}>
+      <Field label="Icon & Name">
+        <div className="flex gap-2">
+          <Input
+            value={icon}
+            onChange={(event) => setIcon(event.target.value.slice(0, 2))}
+            className="h-10 w-10 rounded-xl border-border bg-surface text-center text-lg"
+          />
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="flex-1 rounded-xl border-border bg-surface"
+          />
+        </div>
+      </Field>
+      <Field label="Description">
+        <Textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={3}
+          className="resize-none rounded-xl border-border bg-surface"
+        />
+      </Field>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      <ProjectModalActions onClose={onClose} saving={saving} label="Save project" onSubmit={() => void submit()} />
+    </ProjectModalShell>
+  );
+}
+
+function DeleteProjectModal({
+  project,
+  onClose,
+  onDeleted,
+}: {
+  project: Project;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function deleteProject() {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      await api.deleteProject(project.id);
+      onDeleted();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not delete project.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ProjectModalShell title="Delete project" description="This removes the project, repositories, and tasks." onClose={onClose}>
+      <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        Delete {project.name}? This cannot be undone.
+      </div>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3 -mx-5 -mb-5">
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="destructive" disabled={saving} onClick={() => void deleteProject()}>
+          <Trash2 className="h-4 w-4" /> {saving ? "Deleting..." : "Delete project"}
+        </Button>
+      </div>
+    </ProjectModalShell>
   );
 }
 
@@ -202,7 +449,7 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState("");
 
   async function submit() {
-    if (saving) return;
+    if (saving || !name.trim()) return;
     setSaving(true);
     setError("");
 
@@ -229,18 +476,92 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
+    <ProjectModalShell title="New project" description="Set up a workspace for your team." onClose={onClose}>
+      <Field label="Icon & Name">
+        <div className="flex gap-2">
+          <Input
+            value={icon}
+            onChange={(event) => setIcon(event.target.value.slice(0, 2))}
+            className="h-10 w-10 rounded-xl border-border bg-surface text-center text-lg"
+          />
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="e.g. DarkTasks Mobile"
+            className="flex-1 rounded-xl border-border bg-surface"
+          />
+        </div>
+      </Field>
+      <Field label="Description">
+        <Textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={3}
+          placeholder="What is this project about?"
+          className="resize-none rounded-xl border-border bg-surface"
+        />
+      </Field>
+      <Field label="Repositories">
+        <Input
+          value={repoText}
+          onChange={(event) => setRepoText(event.target.value)}
+          placeholder="General, API, Dashboard"
+          className="rounded-xl border-border bg-surface"
+        />
+        <div className="mt-1 text-[11px] text-muted-foreground">
+          Separate multiple repositories with commas.
+        </div>
+      </Field>
+      <Field label="Members">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {users.map((user) => (
+            <label
+              key={user.id}
+              className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs transition hover:bg-surface-2"
+            >
+              <Checkbox
+                checked={memberIds.includes(user.id)}
+                onCheckedChange={(checked) =>
+                  setMemberIds((ids) =>
+                    checked ? [...ids, user.id] : ids.filter((id) => id !== user.id),
+                  )
+                }
+              />
+              <span className="truncate">{user.name}</span>
+            </label>
+          ))}
+        </div>
+      </Field>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      <ProjectModalActions onClose={onClose} saving={saving} label="Create project" onSubmit={() => void submit()} />
+    </ProjectModalShell>
+  );
+}
+
+function ProjectModalShell({
+  title,
+  description,
+  onClose,
+  children,
+}: {
+  title: string;
+  description: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in"
       onClick={onClose}
     >
       <div
         className="w-full max-w-lg rounded-2xl border border-border bg-popover shadow-[var(--shadow-elevated)] animate-scale-in"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
-            <div className="text-base font-semibold">New project</div>
-            <div className="text-xs text-muted-foreground">Set up a workspace for your team.</div>
+            <div className="text-base font-semibold">{title}</div>
+            <div className="text-xs text-muted-foreground">{description}</div>
           </div>
           <Button
             variant="ghost"
@@ -251,81 +572,31 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="space-y-4 px-5 py-5">
-          <Field label="Icon & Name">
-            <div className="flex gap-2">
-              <Input
-                value={icon}
-                onChange={(event) => setIcon(event.target.value.slice(0, 2))}
-                className="h-10 w-10 rounded-xl border-border bg-surface text-center text-lg"
-              />
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. DarkTasks Mobile"
-                className="flex-1 rounded-xl border-border bg-surface"
-              />
-            </div>
-          </Field>
-          <Field label="Description">
-            <Textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={3}
-              placeholder="What is this project about?"
-              className="resize-none rounded-xl border-border bg-surface"
-            />
-          </Field>
-          <Field label="Repositories">
-            <Input
-              value={repoText}
-              onChange={(event) => setRepoText(event.target.value)}
-              placeholder="General, API, Dashboard"
-              className="rounded-xl border-border bg-surface"
-            />
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              Separate multiple repositories with commas.
-            </div>
-          </Field>
-          <Field label="Members">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {users.map((user) => (
-                <label
-                  key={user.id}
-                  className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs transition hover:bg-surface-2"
-                >
-                  <Checkbox
-                    checked={memberIds.includes(user.id)}
-                    onCheckedChange={(checked) =>
-                      setMemberIds((ids) =>
-                        checked
-                          ? [...ids, user.id]
-                          : ids.filter((id) => id !== user.id),
-                      )
-                    }
-                  />
-                  <span className="truncate">{user.name}</span>
-                </label>
-              ))}
-            </div>
-          </Field>
-          {error && <div className="text-xs text-destructive">{error}</div>}
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-          <Button
-            variant="ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            disabled={saving}
-            onClick={submit}
-          >
-            {saving ? "Creating..." : "Create project"}
-          </Button>
-        </div>
+        <div className="space-y-4 px-5 py-5">{children}</div>
       </div>
+    </div>
+  );
+}
+
+function ProjectModalActions({
+  onClose,
+  saving,
+  label,
+  onSubmit,
+}: {
+  onClose: () => void;
+  saving: boolean;
+  label: string;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="-mx-5 -mb-5 flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+      <Button variant="ghost" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button disabled={saving} onClick={onSubmit}>
+        {saving ? "Saving..." : label}
+      </Button>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Filter, MoreHorizontal, Plus, Search, X } from "lucide-react";
+import { Filter, MoreHorizontal, Plus, Search, Trash2, X } from "lucide-react";
 import { users, type User } from "@/lib/app-data";
+import { DataRefreshButton } from "@/components/app/data-refresh-button";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +28,8 @@ function UsersPage() {
   const [role, setRole] = useState<"all" | "Admin" | "User">("all");
   const [editing, setEditing] = useState<User | null>(null);
   const [creating, setCreating] = useState(false);
-  const [menu, setMenu] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ user: User; x: number; y: number; placement: "top" | "bottom" } | null>(null);
+  const [deleting, setDeleting] = useState<User | null>(null);
   const [version, setVersion] = useState(0);
 
   const filtered = users.filter(
@@ -52,12 +54,15 @@ function UsersPage() {
           <h1 className="text-3xl font-semibold tracking-tight">Users</h1>
           <p className="mt-1 text-sm text-muted-foreground">Manage members and their access.</p>
         </div>
-        <Button
-          onClick={() => setCreating(true)}
-          className="rounded-xl gradient-primary px-3.5 py-2 text-primary-foreground shadow-[var(--shadow-glow)] hover:opacity-95"
-        >
-          <Plus className="h-4 w-4" /> Invite user
-        </Button>
+        <div className="flex items-center gap-2">
+          <DataRefreshButton onRefreshed={() => setVersion((value) => value + 1)} />
+          <Button
+            onClick={() => setCreating(true)}
+            className="rounded-xl gradient-primary px-3.5 py-2 text-primary-foreground shadow-[var(--shadow-glow)] hover:opacity-95"
+          >
+            <Plus className="h-4 w-4" /> Invite user
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -144,32 +149,55 @@ function UsersPage() {
                     Active
                   </span>
                 </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">Signed in user</td>
+                <td
+                  className="px-4 py-3 text-xs text-muted-foreground"
+                  title={user.lastActiveAt ? new Date(user.lastActiveAt).toLocaleString() : undefined}
+                >
+                  {user.lastActive}
+                </td>
                 <td className="px-4 py-3 text-right relative">
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setMenu(menu === user.id ? null : user.id)}
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const placement = window.innerHeight - rect.bottom < 110 ? "top" : "bottom";
+                      setMenu((current) =>
+                        current?.user.id === user.id
+                          ? null
+                          : {
+                              user,
+                              x: rect.right,
+                              y: placement === "top" ? rect.top : rect.bottom,
+                              placement,
+                            },
+                      );
+                    }}
                     className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-surface-3 hover:text-foreground"
                   >
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
-                  {menu === user.id && (
-                    <UserMenu
-                      onClose={() => setMenu(null)}
-                      onEdit={() => {
-                        setEditing(user);
-                        setMenu(null);
-                      }}
-                      onDelete={() => void deleteUser(user)}
-                    />
-                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {menu && (
+        <UserMenu
+          menu={menu}
+          onClose={() => setMenu(null)}
+          onEdit={() => {
+            setEditing(menu.user);
+            setMenu(null);
+          }}
+          onDelete={() => {
+            setDeleting(menu.user);
+            setMenu(null);
+          }}
+        />
+      )}
 
       {creating && (
         <UserModal
@@ -195,23 +223,39 @@ function UsersPage() {
           }}
         />
       )}
+      {deleting && (
+        <DeleteUserDialog
+          user={deleting}
+          onClose={() => setDeleting(null)}
+          onConfirm={() => deleteUser(deleting).then(() => setDeleting(null))}
+        />
+      )}
     </div>
   );
 }
 
 function UserMenu({
+  menu,
   onClose,
   onEdit,
   onDelete,
 }: {
+  menu: { user: User; x: number; y: number; placement: "top" | "bottom" };
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   return (
     <>
-      <div className="fixed inset-0 z-30" onClick={onClose} />
-      <div className="absolute right-4 top-full z-40 mt-1 w-52 overflow-hidden rounded-xl border border-border bg-popover shadow-[var(--shadow-elevated)] animate-scale-in">
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 w-52 overflow-hidden rounded-xl border border-border bg-popover shadow-[var(--shadow-elevated)] animate-scale-in"
+        style={{
+          left: Math.max(12, menu.x - 208),
+          top: menu.placement === "bottom" ? menu.y + 6 : undefined,
+          bottom: menu.placement === "top" ? window.innerHeight - menu.y + 6 : undefined,
+        }}
+      >
         <button
           onClick={onEdit}
           className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-2 transition"
@@ -228,6 +272,57 @@ function UserMenu({
         </div>
       </div>
     </>
+  );
+}
+
+function DeleteUserDialog({
+  user,
+  onClose,
+  onConfirm,
+}: {
+  user: User;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function confirm() {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      await onConfirm();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not delete user.");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md border-border bg-popover">
+        <DialogHeader>
+          <DialogTitle>Delete user</DialogTitle>
+          <DialogDescription>
+            This removes the member account from DarkTasks.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          Delete {user.name}? This cannot be undone.
+        </div>
+        {error && <div className="text-xs text-destructive">{error}</div>}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="destructive" disabled={saving} onClick={() => void confirm()}>
+            <Trash2 className="h-4 w-4" /> {saving ? "Deleting..." : "Delete user"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

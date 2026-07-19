@@ -7,6 +7,8 @@ export type User = {
   email: string;
   initials: string;
   color: string;
+  lastActive: string;
+  lastActiveAt: string | null;
 };
 
 export type Repository = { id: string; name: string; color: string };
@@ -78,6 +80,8 @@ export const currentUser: User = {
   email: "",
   initials: "",
   color: "oklch(0.66 0.19 275)",
+  lastActive: "Never",
+  lastActiveAt: null,
 };
 export const projects: Project[] = [];
 export const defaultColumns: Column[] = [];

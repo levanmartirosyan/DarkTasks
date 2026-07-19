@@ -1,4 +1,5 @@
 ﻿import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -35,6 +36,7 @@ function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [appVersion, setAppVersion] = useState(__APP_VERSION__);
   const isSubmittingRef = useRef(false);
 
   useEffect(() => {
@@ -42,6 +44,14 @@ function LoginPage() {
       void navigate({ to: "/app/dashboard", replace: true });
     }
   }, [navigate]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(__APP_VERSION__));
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -81,8 +91,8 @@ function LoginPage() {
   }
 
   return (
-    <div className="aurora-bg relative min-h-screen overflow-hidden" data-tauri-drag-region>
-      <WindowDragRegion />
+    <div className="aurora-bg relative min-h-screen overflow-hidden">
+      <WindowDragRegion className="right-[160px]" />
       <WindowControls className="fixed right-4 top-4 z-50 border-l-0 rounded-xl border border-border bg-surface/60 px-1.5 py-1 pl-1.5 backdrop-blur" />
 
       <div className="pointer-events-none absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full opacity-40 blur-3xl gradient-primary animate-float" />
@@ -99,7 +109,7 @@ function LoginPage() {
           </div>
           <div className="max-w-md space-y-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur">
-              <span className="h-1.5 w-1.5 rounded-full bg-success" /> v2.4 - Boards & repositories
+              <span className="h-1.5 w-1.5 rounded-full bg-success" /> v{appVersion} - Boards & repositories
             </div>
             <h1 className="text-4xl font-semibold tracking-tight leading-[1.1]">
               A calm, focused workspace for teams that ship.

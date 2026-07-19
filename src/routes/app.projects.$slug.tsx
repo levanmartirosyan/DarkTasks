@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import {
   ChevronRight,
   Filter,
@@ -18,6 +18,7 @@ import { api } from "@/lib/api-client";
 import {
   defaultColumns,
   currentUser,
+  projects,
   projectBySlug,
   tasks as allTasks,
   users,
@@ -31,6 +32,7 @@ import { TaskCard } from "@/components/app/task-card";
 import { TaskDetailSheet } from "@/components/app/task-detail-sheet";
 import { TaskEditModal } from "@/components/app/task-edit-modal";
 import { AvatarStack } from "@/components/app/user-avatar";
+import { DataRefreshButton } from "@/components/app/data-refresh-button";
 import { Button } from "@/components/ui/button";
 import { Calendar as UiCalendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -87,6 +89,8 @@ export const Route = createFileRoute("/app/projects/$slug")({
 
 function ProjectBoardPage() {
   const { project } = Route.useLoaderData();
+  const params = Route.useParams();
+  const navigate = useNavigate();
   const [repoId, setRepoId] = useState<string>("all");
   const [columns, setColumns] = useState(defaultColumns);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -95,6 +99,11 @@ function ProjectBoardPage() {
   const [columnName, setColumnName] = useState("");
   const [creatingTaskStatus, setCreatingTaskStatus] = useState<string | null>(null);
   const [creatingRepo, setCreatingRepo] = useState(false);
+  const [editingProject, setEditingProject] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
+  const [editingRepo, setEditingRepo] = useState<Repository | null>(null);
+  const [deletingRepo, setDeletingRepo] = useState<Repository | null>(null);
+  const [repoMenuId, setRepoMenuId] = useState<string | null>(null);
   const [managingMembers, setManagingMembers] = useState(false);
   const [managingColumn, setManagingColumn] = useState<Column | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
@@ -255,6 +264,7 @@ function ProjectBoardPage() {
             <p className="mt-0.5 text-sm text-muted-foreground">{project.description}</p>
           </div>
           <div className="flex items-center gap-3">
+            <DataRefreshButton onRefreshed={() => setVersion((value) => value + 1)} />
             <div className="hidden md:flex items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-1.5">
               <Users2 className="h-3.5 w-3.5 text-muted-foreground" />
               <AvatarStack users={project.memberIds.map(userById)} size={22} />
@@ -271,6 +281,20 @@ function ProjectBoardPage() {
             >
               <Plus className="h-4 w-4" /> New task
             </button>
+            <Button
+              variant="outline"
+              onClick={() => setEditingProject(true)}
+              className="rounded-xl border-border bg-surface px-3 py-2 hover:bg-surface-2"
+            >
+              <Pencil className="h-4 w-4" /> Edit
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setDeletingProject(true)}
+              className="rounded-xl border-border bg-surface px-3 py-2 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
@@ -291,11 +315,46 @@ function ProjectBoardPage() {
                 (t) => t.projectId === project.id && t.repositoryId === r.id,
               ).length;
               return (
-                <RepoPill key={r.id} active={repoId === r.id} onClick={() => setRepoId(r.id)}>
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.color }} />
-                  <span>{r.name}</span>
-                  <span className="rounded-md bg-surface-3 px-1 text-[10px]">{count}</span>
-                </RepoPill>
+                <div key={r.id} className="flex items-center gap-0.5">
+                  <RepoPill active={repoId === r.id} onClick={() => setRepoId(r.id)}>
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: r.color }} />
+                    <span>{r.name}</span>
+                    <span className="rounded-md bg-surface-3 px-1 text-[10px]">{count}</span>
+                  </RepoPill>
+                  <div className="relative">
+                    <button
+                      onClick={() => setRepoMenuId((id) => (id === r.id ? null : r.id))}
+                      className="rounded-lg px-1.5 py-1.5 text-xs text-muted-foreground hover:bg-surface-2 hover:text-foreground transition"
+                    >
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </button>
+                    {repoMenuId === r.id && (
+                      <>
+                        <div className="fixed inset-0 z-20" onClick={() => setRepoMenuId(null)} />
+                        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-[var(--shadow-elevated)]">
+                          <button
+                            onClick={() => {
+                              setEditingRepo(r);
+                              setRepoMenuId(null);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2 transition"
+                          >
+                            <Pencil className="h-4 w-4" /> Edit repo
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDeletingRepo(r);
+                              setRepoMenuId(null);
+                            }}
+                            className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 transition"
+                          >
+                            <Trash2 className="h-4 w-4" /> Delete repo
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               );
             })}
             <button
@@ -472,6 +531,60 @@ function ProjectBoardPage() {
           onClose={() => setCreatingRepo(false)}
         />
       )}
+      {editingProject && (
+        <EditProjectModal
+          project={project}
+          onClose={() => setEditingProject(false)}
+          onUpdated={(updated) => {
+            Object.assign(project, updated);
+            const index = projects.findIndex((item) => item.id === updated.id);
+            if (index >= 0) projects[index] = updated;
+            setEditingProject(false);
+            setVersion((value) => value + 1);
+            if (updated.slug !== params.slug) {
+              navigate({ to: "/app/projects/$slug", params: { slug: updated.slug } });
+            }
+          }}
+        />
+      )}
+      {deletingProject && (
+        <DeleteProjectModal
+          project={project}
+          onClose={() => setDeletingProject(false)}
+          onDeleted={() => {
+            const index = projects.findIndex((item) => item.id === project.id);
+            if (index >= 0) projects.splice(index, 1);
+            setDeletingProject(false);
+            navigate({ to: "/app/projects" });
+          }}
+        />
+      )}
+      {editingRepo && (
+        <EditRepositoryModal
+          repository={editingRepo}
+          onClose={() => setEditingRepo(null)}
+          onUpdated={(updated) => {
+            const index = project.repositories.findIndex((repo: Repository) => repo.id === updated.id);
+            if (index >= 0) project.repositories[index] = updated;
+            setEditingRepo(null);
+            setVersion((value) => value + 1);
+          }}
+        />
+      )}
+      {deletingRepo && (
+        <DeleteRepositoryModal
+          repository={deletingRepo}
+          taskCount={allTasks.filter((task) => task.repositoryId === deletingRepo.id).length}
+          onClose={() => setDeletingRepo(null)}
+          onDeleted={() => {
+            const index = project.repositories.findIndex((repo: Repository) => repo.id === deletingRepo.id);
+            if (index >= 0) project.repositories.splice(index, 1);
+            if (repoId === deletingRepo.id) setRepoId("all");
+            setDeletingRepo(null);
+            setVersion((value) => value + 1);
+          }}
+        />
+      )}
       {managingMembers && (
         <ProjectMembersModal
           project={project}
@@ -557,6 +670,119 @@ function RepoPill({
     >
       {children}
     </button>
+  );
+}
+
+function EditProjectModal({
+  project,
+  onClose,
+  onUpdated,
+}: {
+  project: Project;
+  onClose: () => void;
+  onUpdated: (project: Project) => void;
+}) {
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description);
+  const [icon, setIcon] = useState(project.icon);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    if (saving || !name.trim()) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      const updated = (await api.updateProject(project.id, { name, description, icon })) as Project;
+      onUpdated(updated);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not update project.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell
+      title="Edit project"
+      description="Update project identity and description."
+      onClose={onClose}
+    >
+      <Field label="Icon & Name">
+        <div className="flex gap-2">
+          <Input
+            value={icon}
+            onChange={(event) => setIcon(event.target.value.slice(0, 2))}
+            className="h-10 w-10 rounded-xl border-border bg-surface text-center text-lg"
+          />
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="flex-1 rounded-xl border-border bg-surface"
+          />
+        </div>
+      </Field>
+      <Field label="Description">
+        <Textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={3}
+          className="resize-none rounded-xl border-border bg-surface"
+        />
+      </Field>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      <ModalActions onClose={onClose} saving={saving} label="Save project" onSubmit={() => void submit()} />
+    </ModalShell>
+  );
+}
+
+function DeleteProjectModal({
+  project,
+  onClose,
+  onDeleted,
+}: {
+  project: Project;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function deleteProject() {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      await api.deleteProject(project.id);
+      onDeleted();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not delete project.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell
+      title="Delete project"
+      description="This removes the project, repositories, and all tasks inside it."
+      onClose={onClose}
+    >
+      <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        Delete {project.name}? This cannot be undone.
+      </div>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      <div className="-mx-5 -mb-5 mt-1 flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button variant="destructive" disabled={saving} onClick={() => void deleteProject()}>
+          <Trash2 className="h-4 w-4" /> {saving ? "Deleting..." : "Delete project"}
+        </Button>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -688,6 +914,134 @@ function CreateRepositoryModal({
         label="Create repository"
         onSubmit={() => void submit()}
       />
+    </ModalShell>
+  );
+}
+
+function EditRepositoryModal({
+  repository,
+  onUpdated,
+  onClose,
+}: {
+  repository: Repository;
+  onUpdated: (repository: Repository) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(repository.name);
+  const [color, setColor] = useState(repository.color);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const swatches = [
+    "oklch(0.66 0.19 275)",
+    "oklch(0.7 0.17 220)",
+    "oklch(0.72 0.15 155)",
+    "oklch(0.78 0.14 75)",
+    "oklch(0.7 0.18 340)",
+  ];
+
+  async function submit() {
+    if (saving || !name.trim()) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      const updated = (await api.updateRepository(repository.id, { name, color })) as Repository;
+      onUpdated(updated);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not update repository.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell
+      title="Edit repository"
+      description="Rename this repository or adjust its board color."
+      onClose={onClose}
+    >
+      <Field label="Repository name">
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          autoFocus
+          className="rounded-xl border-border bg-surface"
+        />
+      </Field>
+      <Field label="Color">
+        <div className="flex gap-2">
+          {swatches.map((swatch) => (
+            <button
+              key={swatch}
+              onClick={() => setColor(swatch)}
+              className={cn(
+                "h-8 w-8 rounded-xl transition",
+                color === swatch && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+              )}
+              style={{ background: swatch }}
+            />
+          ))}
+        </div>
+      </Field>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      <ModalActions onClose={onClose} saving={saving} label="Save repository" onSubmit={() => void submit()} />
+    </ModalShell>
+  );
+}
+
+function DeleteRepositoryModal({
+  repository,
+  taskCount,
+  onDeleted,
+  onClose,
+}: {
+  repository: Repository;
+  taskCount: number;
+  onDeleted: () => void;
+  onClose: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function deleteRepository() {
+    if (saving || taskCount > 0) return;
+    setSaving(true);
+    setError("");
+
+    try {
+      await api.deleteRepository(repository.id);
+      onDeleted();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not delete repository.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell
+      title="Delete repository"
+      description="Repositories can only be deleted when no tasks are assigned to them."
+      onClose={onClose}
+    >
+      <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        {taskCount > 0
+          ? `${repository.name} has ${taskCount} task${taskCount === 1 ? "" : "s"}. Move or delete those tasks first.`
+          : `Delete ${repository.name}? This cannot be undone.`}
+      </div>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      <div className="-mx-5 -mb-5 mt-1 flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={saving || taskCount > 0}
+          onClick={() => void deleteRepository()}
+        >
+          <Trash2 className="h-4 w-4" /> {saving ? "Deleting..." : "Delete repository"}
+        </Button>
+      </div>
     </ModalShell>
   );
 }

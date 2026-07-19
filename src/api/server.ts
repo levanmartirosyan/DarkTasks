@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
-import { desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
@@ -68,6 +68,18 @@ function isDuplicateTaskCodeError(error: unknown) {
   );
 }
 
+function isUniqueViolation(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+
+  const record = error as {
+    code?: string;
+    constraint_name?: string;
+    cause?: { code?: string; constraint_name?: string };
+  };
+
+  return record.code === "23505" || record.cause?.code === "23505";
+}
+
 function slugify(value: string) {
   const slug = value
     .trim()
@@ -89,6 +101,117 @@ function initials(name: string) {
   );
 }
 
+function usernameFromEmail(email: string, fallbackId: string) {
+  const base = email.split("@")[0]?.replace(/[^a-z0-9_.-]/gi, "").toLowerCase() || "user";
+  return `${base}-${fallbackId.slice(0, 6)}`;
+}
+
+async function findDuplicateIdentity({
+  email,
+  name,
+  username,
+  excludeId,
+}: {
+  email?: string;
+  name?: string;
+  username?: string;
+  excludeId?: string;
+}) {
+  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedName = name?.trim().toLowerCase();
+  const normalizedUsername = username?.trim().toLowerCase();
+  const identityWhere = or(
+    normalizedEmail ? sql`lower(${users.email}) = ${normalizedEmail}` : undefined,
+    normalizedName ? sql`lower(${users.name}) = ${normalizedName}` : undefined,
+    normalizedUsername ? sql`lower(${users.username}) = ${normalizedUsername}` : undefined,
+  );
+
+  if (!identityWhere) return null;
+
+  const [existing] = await db
+    .select({ id: users.id, email: users.email, name: users.name, username: users.username })
+    .from(users)
+    .where(excludeId ? and(ne(users.id, excludeId), identityWhere) : identityWhere)
+    .limit(1);
+
+  if (!existing) return null;
+  if (normalizedEmail && existing.email.toLowerCase() === normalizedEmail) return "Email already exists";
+  if (normalizedName && existing.name.toLowerCase() === normalizedName) return "Name already exists";
+  return "Username already exists";
+}
+
+async function ensureUserIdentityIntegrity() {
+  await db.execute(sql`alter table users add column if not exists last_active_at timestamp with time zone`);
+
+  await db.execute(sql`
+    with ranked as (
+      select
+        id,
+        row_number() over (partition by lower(username) order by created_at, id) as rn
+      from users
+    )
+    update users
+    set
+      username = left(regexp_replace(lower(coalesce(nullif(users.username, ''), 'user')), '[^a-z0-9_.-]+', '', 'g'), 40) || '-' || left(users.id, 8),
+      updated_at = now()
+    from ranked
+    where users.id = ranked.id and ranked.rn > 1
+  `);
+
+  await db.execute(sql`
+    with ranked as (
+      select
+        id,
+        email,
+        row_number() over (partition by lower(email) order by created_at, id) as rn
+      from users
+    )
+    update users
+    set
+      email = (
+        case
+          when position('@' in users.email) > 1 then
+            split_part(users.email, '@', 1) || '+' || left(users.id, 8) || '@' || split_part(users.email, '@', 2)
+          else
+            'user+' || left(users.id, 8) || '@darktasks.local'
+        end
+      ),
+      updated_at = now()
+    from ranked
+    where users.id = ranked.id and ranked.rn > 1
+  `);
+
+  await db.execute(sql`
+    with ranked as (
+      select
+        id,
+        row_number() over (partition by lower(name) order by created_at, id) as rn
+      from users
+    )
+    update users
+    set
+      name = trim(coalesce(nullif(users.name, ''), 'User')) || ' ' || upper(left(users.id, 8)),
+      updated_at = now()
+    from ranked
+    where users.id = ranked.id and ranked.rn > 1
+  `);
+
+  await db.execute(sql`create unique index if not exists users_username_lower_unique on users (lower(username))`);
+  await db.execute(sql`create unique index if not exists users_email_lower_unique on users (lower(email))`);
+  await db.execute(sql`create unique index if not exists users_name_lower_unique on users (lower(name))`);
+  await db.execute(sql`
+    update users
+    set last_active_at = coalesce(
+      users.last_active_at,
+      (
+        select max(user_sessions.created_at)
+        from user_sessions
+        where user_sessions.user_id = users.id
+      )
+    )
+  `);
+}
+
 async function currentUserFromRequest(c: Context) {
   const header = c.req.header("authorization");
   const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
@@ -102,7 +225,11 @@ async function currentUserFromRequest(c: Context) {
 
     if (session && session.expiresAt > new Date()) {
       const [user] = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
-      if (user) return user;
+      if (user) {
+        const now = new Date();
+        await db.update(users).set({ lastActiveAt: now }).where(eq(users.id, user.id));
+        return { ...user, lastActiveAt: now };
+      }
     }
   }
 
@@ -232,20 +359,21 @@ api.get("/ready", async (c) => {
 
 api.post("/auth/login", async (c) => {
   const body = (await c.req.json()) as { username?: string; password?: string };
-  const username = body.username?.trim();
+  const username = body.username?.trim().toLowerCase();
   const password = body.password ?? "";
 
   if (!username || !password) {
     return c.json({ error: "Username and password are required" }, 400);
   }
 
-  const [user] = await db
+  const matchingUsers = await db
     .select()
     .from(users)
-    .where(or(eq(users.username, username), eq(users.email, username.toLowerCase())))
-    .limit(1);
+    .where(or(sql`lower(${users.username}) = ${username}`, sql`lower(${users.email}) = ${username}`))
+    .limit(5);
+  const user = matchingUsers.find((candidate) => verifyPassword(password, candidate.passwordHash));
 
-  if (!user || !verifyPassword(password, user.passwordHash)) {
+  if (!user) {
     return c.json({ error: "Invalid username or password" }, 401);
   }
 
@@ -256,10 +384,12 @@ api.post("/auth/login", async (c) => {
     tokenHash: hashSessionToken(token),
     expiresAt: sessionExpiry(),
   });
+  const lastActiveAt = new Date();
+  await db.update(users).set({ lastActiveAt }).where(eq(users.id, user.id));
 
   return c.json({
     token,
-    user: serializeUsers([user])[0],
+    user: serializeUsers([{ ...user, lastActiveAt }])[0],
   });
 });
 
@@ -282,24 +412,34 @@ api.post("/users", async (c) => {
 
   if (!name || !email) return c.json({ error: "Name and email are required" }, 400);
 
-  const usernameBase = email.split("@")[0]?.replace(/[^a-z0-9_.-]/gi, "").toLowerCase() || "user";
   const id = randomUUID();
+  const username = usernameFromEmail(email, id);
+  const duplicate = await findDuplicateIdentity({ email, name, username });
 
-  const [created] = await db
-    .insert(users)
-    .values({
-      id,
-      username: `${usernameBase}-${id.slice(0, 6)}`,
-      name,
-      email,
-      role: body.role ?? "User",
-      passwordHash: hashPassword(body.password || "DarkTasks123!"),
-      initials: initials(name),
-      color: colors[Math.floor(Math.random() * colors.length)],
-    })
-    .returning();
+  if (duplicate) return c.json({ error: duplicate }, 409);
 
-  return c.json(serializeUsers([created])[0], 201);
+  try {
+    const [created] = await db
+      .insert(users)
+      .values({
+        id,
+        username,
+        name,
+        email,
+        role: body.role ?? "User",
+        passwordHash: hashPassword(body.password || "DarkTasks123!"),
+        initials: initials(name),
+        color: colors[Math.floor(Math.random() * colors.length)],
+      })
+      .returning();
+
+    return c.json(serializeUsers([created])[0], 201);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return c.json({ error: "A user with this name, email, or username already exists" }, 409);
+    }
+    throw error;
+  }
 });
 
 api.patch("/users/:id", async (c) => {
@@ -314,17 +454,26 @@ api.patch("/users/:id", async (c) => {
 
   if (!name || !email) return c.json({ error: "Name and email are required" }, 400);
 
-  const [updated] = await db
-    .update(users)
-    .set({
-      name,
-      email,
-      role: body.role ?? "User",
-      initials: initials(name),
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, id))
-    .returning();
+  const duplicate = await findDuplicateIdentity({ email, name, excludeId: id });
+  if (duplicate) return c.json({ error: duplicate }, 409);
+
+  let updated;
+  try {
+    [updated] = await db
+      .update(users)
+      .set({
+        name,
+        email,
+        role: body.role ?? "User",
+        initials: initials(name),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, id))
+      .returning();
+  } catch (error) {
+    if (isUniqueViolation(error)) return c.json({ error: "Name or email already exists" }, 409);
+    throw error;
+  }
 
   if (!updated) return c.json({ error: "User not found" }, 404);
   return c.json(serializeUsers([updated])[0]);
@@ -357,11 +506,20 @@ api.patch("/profile", async (c) => {
 
   if (!name || !email) return c.json({ error: "Name and email are required" }, 400);
 
-  const [updated] = await db
-    .update(users)
-    .set({ name, email, initials: initials(name), updatedAt: new Date() })
-    .where(eq(users.id, user.id))
-    .returning();
+  const duplicate = await findDuplicateIdentity({ email, name, excludeId: user.id });
+  if (duplicate) return c.json({ error: duplicate }, 409);
+
+  let updated;
+  try {
+    [updated] = await db
+      .update(users)
+      .set({ name, email, initials: initials(name), updatedAt: new Date() })
+      .where(eq(users.id, user.id))
+      .returning();
+  } catch (error) {
+    if (isUniqueViolation(error)) return c.json({ error: "Name or email already exists" }, 409);
+    throw error;
+  }
 
   return c.json(serializeUsers([updated])[0]);
 });
@@ -468,6 +626,55 @@ api.get("/projects/:slug", async (c) => {
   return c.json(project);
 });
 
+api.patch("/projects/:id", async (c) => {
+  const projectId = c.req.param("id");
+  const body = (await c.req.json()) as {
+    name?: string;
+    description?: string;
+    icon?: string;
+  };
+  const name = body.name?.trim();
+
+  if (!name) return c.json({ error: "Project name is required" }, 400);
+
+  const slug = slugify(name);
+  const [updated] = await db
+    .update(projects)
+    .set({
+      name,
+      slug,
+      description: body.description?.trim() ?? "",
+      icon: body.icon?.trim() || "D",
+      lastActivity: "Just now",
+      updatedAt: new Date(),
+    })
+    .where(eq(projects.id, projectId))
+    .returning();
+
+  if (!updated) return c.json({ error: "Project not found" }, 404);
+
+  const repositoryRows = await db.select().from(repositories);
+  const memberRows = await db.select().from(projectMembers);
+  const taskRows = await db.select().from(tasks);
+  const user = await currentUserFromRequest(c);
+  await addActivity(user?.id, "updated project", name);
+
+  return c.json(serializeProjects([updated], repositoryRows, memberRows, taskRows)[0]);
+});
+
+api.delete("/projects/:id", async (c) => {
+  const projectId = c.req.param("id");
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  await db.delete(projects).where(eq(projects.id, projectId));
+  const user = await currentUserFromRequest(c);
+  await addActivity(user?.id, "deleted project", project.name);
+
+  return c.json({ ok: true });
+});
+
 api.patch("/projects/:id/members", async (c) => {
   const projectId = c.req.param("id");
   const body = (await c.req.json()) as { memberIds?: string[] };
@@ -514,6 +721,47 @@ api.post("/projects/:id/repositories", async (c) => {
   await addActivity(user?.id, "created repository", name);
 
   return c.json({ id: created.id, name: created.name, color: created.color }, 201);
+});
+
+api.patch("/repositories/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req.json()) as { name?: string; color?: string };
+  const name = body.name?.trim();
+
+  if (!name) return c.json({ error: "Repository name is required" }, 400);
+
+  const [updated] = await db
+    .update(repositories)
+    .set({
+      name,
+      color: body.color || colors[0],
+    })
+    .where(eq(repositories.id, id))
+    .returning();
+
+  if (!updated) return c.json({ error: "Repository not found" }, 404);
+  const user = await currentUserFromRequest(c);
+  await addActivity(user?.id, "updated repository", name);
+
+  return c.json({ id: updated.id, name: updated.name, color: updated.color });
+});
+
+api.delete("/repositories/:id", async (c) => {
+  const id = c.req.param("id");
+  const taskRows = await db.select().from(tasks).where(eq(tasks.repositoryId, id));
+
+  if (taskRows.length > 0) {
+    return c.json({ error: "Move or delete this repository's tasks before deleting it." }, 400);
+  }
+
+  const [repo] = await db.select().from(repositories).where(eq(repositories.id, id)).limit(1);
+  if (!repo) return c.json({ error: "Repository not found" }, 404);
+
+  await db.delete(repositories).where(eq(repositories.id, id));
+  const user = await currentUserFromRequest(c);
+  await addActivity(user?.id, "deleted repository", repo.name);
+
+  return c.json({ ok: true });
 });
 
 api.get("/tasks", async (c) => {
@@ -745,6 +993,8 @@ app.route("/api", api);
 
 const host = process.env.API_HOST ?? "127.0.0.1";
 const port = Number(process.env.API_PORT ?? 8787);
+
+await ensureUserIdentityIntegrity();
 
 serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   console.log(`DarkTasks API listening on http://localhost:${info.port}`);

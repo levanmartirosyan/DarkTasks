@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { priorityMeta, projectById, projects, tasks, userById } from "@/lib/app-data";
+import { DataRefreshButton } from "@/components/app/data-refresh-button";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +50,7 @@ function parseDeadline(value: string) {
 
 function CalendarPage() {
   const [view, setView] = useState<"Month" | "Week" | "Day">("Month");
+  const [, setVersion] = useState(0);
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -98,6 +100,7 @@ function CalendarPage() {
           <p className="mt-1 text-sm text-muted-foreground">Deadlines and scheduled work.</p>
         </div>
         <div className="flex items-center gap-2">
+          <DataRefreshButton onRefreshed={() => setVersion((value) => value + 1)} />
           <div className="flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
             <button
               onClick={() =>

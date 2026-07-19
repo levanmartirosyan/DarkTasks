@@ -12,6 +12,7 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import { activity, userById } from "@/lib/app-data";
+import { DataRefreshButton } from "@/components/app/data-refresh-button";
 import { UserAvatar } from "@/components/app/user-avatar";
 
 export const Route = createFileRoute("/app/activity")({
@@ -32,6 +33,7 @@ const iconFor = (action: string) => {
 function ActivityPage() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("All");
+  const [version, setVersion] = useState(0);
   const visibleActivity = useMemo(() => {
     const query = q.toLowerCase();
     return activity.filter((item) => {
@@ -49,7 +51,7 @@ function ActivityPage() {
 
       return matchesQuery && matchesFilter;
     });
-  }, [filter, q]);
+  }, [filter, q, version]);
   const days = [
     { label: "Today", items: visibleActivity.slice(0, 3) },
     { label: "Yesterday", items: visibleActivity.slice(3, 5) },
@@ -58,9 +60,12 @@ function ActivityPage() {
 
   return (
     <div className="mx-auto max-w-[900px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Activity</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Every change across your workspace.</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Activity</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Every change across your workspace.</p>
+        </div>
+        <DataRefreshButton onRefreshed={() => setVersion((value) => value + 1)} />
       </div>
 
       <div className="flex flex-wrap gap-2">

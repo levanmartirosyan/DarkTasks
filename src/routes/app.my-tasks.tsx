@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Search, Filter } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { currentUser, tasks, priorityMeta, userById, projectById, type Task } from "@/lib/app-data";
+import { DataRefreshButton } from "@/components/app/data-refresh-button";
 import { UserAvatar } from "@/components/app/user-avatar";
 import { TaskDetailSheet } from "@/components/app/task-detail-sheet";
 import { TaskEditModal } from "@/components/app/task-edit-modal";
@@ -45,11 +46,14 @@ function MyTasks() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">My Tasks</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Everything assigned to you, grouped by urgency.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">My Tasks</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Everything assigned to you, grouped by urgency.
+          </p>
+        </div>
+        <DataRefreshButton onRefreshed={() => setVersion((value) => value + 1)} />
       </div>
 
       <div className="flex flex-wrap gap-2">

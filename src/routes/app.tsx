@@ -31,7 +31,6 @@ import {
 } from "@/lib/app-data";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { UserAvatar } from "@/components/app/user-avatar";
-import { WindowDragRegion } from "@/components/app/window-drag-region";
 import { WindowControls } from "@/components/app/window-controls";
 import { cn } from "@/lib/utils";
 import { clearSessionToken, hasSessionToken } from "@/lib/auth-session";
@@ -91,7 +90,6 @@ function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <WindowDragRegion />
       {/* Sidebar - desktop */}
       <aside
         className={cn(
@@ -159,9 +157,12 @@ function SidebarInner({
   return (
     <>
       <div
-        className={cn("flex items-center gap-2.5 px-4 py-5", collapsed && "justify-center px-2")}
+        className={cn(
+          "relative flex items-center gap-2.5 px-4 py-5",
+          collapsed && "justify-center px-0",
+        )}
       >
-        <BrandLogo className="h-9 w-9 shadow-[var(--shadow-glow)]" />
+        <BrandLogo className={cn("shadow-[var(--shadow-glow)]", collapsed ? "h-10 w-10" : "h-9 w-9")} />
         {!collapsed && (
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold tracking-tight">DarkTasks</div>
@@ -180,8 +181,8 @@ function SidebarInner({
           <button
             onClick={onToggle}
             className={cn(
-              "rounded-lg p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition",
-              collapsed && "absolute right-2 top-6",
+              "grid h-8 w-8 place-items-center rounded-full border border-sidebar-border bg-sidebar text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:bg-sidebar-accent hover:text-foreground",
+              collapsed ? "absolute -right-4 top-7" : "rounded-lg border-0 bg-transparent shadow-none",
             )}
           >
             <ChevronsLeft
@@ -191,7 +192,7 @@ function SidebarInner({
         )}
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-3 pt-2">
+      <nav className={cn("flex-1 space-y-1 pt-2", collapsed ? "px-2" : "px-3")}>
         {navItems.map((item) => (
           <NavLink
             key={item.to}
@@ -204,11 +205,11 @@ function SidebarInner({
       </nav>
 
       {/* Bottom: user */}
-      <div className="border-t border-sidebar-border p-3">
+      <div className={cn("border-t border-sidebar-border", collapsed ? "p-2" : "p-3")}>
         <div
           className={cn(
             "group flex items-center gap-2.5 rounded-xl p-2 hover:bg-sidebar-accent transition",
-            collapsed && "justify-center",
+            collapsed && "mx-auto h-12 w-12 justify-center rounded-2xl p-0",
           )}
         >
           <UserAvatar user={currentUser} size={32} />
@@ -247,7 +248,13 @@ function NavLink({
   return (
     <Link
       to={to}
-      className="group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-foreground transition"
+      title={collapsed ? label : undefined}
+      className={cn(
+        "group relative flex items-center text-sm font-medium text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-foreground transition",
+        collapsed
+          ? "mx-auto h-11 w-11 justify-center rounded-2xl p-0"
+          : "gap-3 rounded-lg px-2.5 py-2",
+      )}
       activeProps={{
         className:
           "!bg-sidebar-accent !text-foreground shadow-[inset_0_0_0_1px_var(--color-border)]",
@@ -255,7 +262,14 @@ function NavLink({
     >
       <Icon className="h-[18px] w-[18px] shrink-0" />
       {!collapsed && <span className="truncate">{label}</span>}
-      <span className="pointer-events-none absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary opacity-0 transition group-[.active]:opacity-100" />
+      <span
+        className={cn(
+          "pointer-events-none absolute bg-primary opacity-0 transition group-[.active]:opacity-100",
+          collapsed
+            ? "-right-2 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-l-full"
+            : "left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full",
+        )}
+      />
     </Link>
   );
 }
@@ -271,12 +285,16 @@ function TopBar({
   onNotif: () => void;
   notifOpen: boolean;
 }) {
-  const workspace = projects[0];
+  const location = useLocation();
+  const projectSlug = location.pathname.match(/^\/app\/projects\/([^/?#]+)/)?.[1];
+  const currentProject = projectSlug
+    ? projects.find((project) => project.slug === decodeURIComponent(projectSlug))
+    : undefined;
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
   return (
-    <header className="sticky top-0 z-20 glass" data-tauri-drag-region>
-      <div className="flex h-16 items-center gap-3 px-4 sm:px-6" data-tauri-drag-region>
+    <header className="sticky top-0 z-20 glass relative" data-tauri-drag-region>
+      <div className="relative z-10 flex h-16 items-center gap-3 px-4 sm:px-6" data-tauri-drag-region>
         <button
           onClick={onMenu}
           className="rounded-lg p-2 text-muted-foreground hover:bg-surface-2 hover:text-foreground transition lg:hidden"
@@ -284,15 +302,17 @@ function TopBar({
           <Menu className="h-5 w-5" />
         </button>
 
-        <div className="hidden md:flex items-center gap-2 text-sm" data-tauri-drag-region>
-          <div className="grid h-7 w-7 place-items-center rounded-md bg-surface-2 text-xs">
-            {workspace?.icon ?? "D"}
+        {currentProject && (
+          <div className="hidden md:flex items-center gap-2 text-sm">
+            <div className="grid h-7 w-7 place-items-center rounded-md bg-surface-2 text-xs">
+              {currentProject.icon}
+            </div>
+            <span className="font-medium">{currentProject.name}</span>
+            <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Project
+            </span>
           </div>
-          <span className="font-medium">{workspace?.name ?? "DarkTasks"}</span>
-          <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-            Workspace
-          </span>
-        </div>
+        )}
 
         <button
           onClick={onSearch}
@@ -306,12 +326,12 @@ function TopBar({
         </button>
 
         <Link
-          to={workspace ? "/app/projects/$slug" : "/app/projects"}
-          params={workspace ? { slug: workspace.slug } : undefined}
+          to={currentProject ? "/app/projects/$slug" : "/app/projects"}
+          params={currentProject ? { slug: currentProject.slug } : undefined}
           className="hidden sm:inline-flex items-center gap-2 rounded-xl gradient-primary px-3.5 py-2 text-sm font-medium text-primary-foreground shadow-[var(--shadow-glow)] transition hover:opacity-95 active:scale-[0.98]"
         >
           <Plus className="h-4 w-4" />
-          <span className="hidden md:inline">{workspace ? "New task" : "New project"}</span>
+          <span className="hidden md:inline">{currentProject ? "New task" : "New project"}</span>
         </Link>
 
         <AppUpdateButton />
@@ -329,7 +349,14 @@ function TopBar({
           {notifOpen && <NotifDropdown onClose={onNotif} />}
         </div>
 
-        <UserAvatar user={currentUser} size={34} />
+        <Link
+          to="/app/settings"
+          search={{ tab: "profile" }}
+          aria-label="Open profile settings"
+          className="rounded-full transition hover:ring-2 hover:ring-ring/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <UserAvatar user={currentUser} size={34} />
+        </Link>
         <WindowControls />
       </div>
     </header>
