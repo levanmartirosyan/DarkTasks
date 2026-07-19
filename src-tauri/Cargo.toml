@@ -1,6 +1,6 @@
 [package]
 name = "darktasks"
-version = "0.9.5"
+version = "0.9.6"
 description = "DarkTasks desktop app"
 authors = ["Levan Martirosyan"]
 license = ""
