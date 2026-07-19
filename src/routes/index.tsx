@@ -85,8 +85,9 @@ function LoginPage() {
 
     try {
       await invoke("open_external_url", { url: LINKEDIN_URL });
-    } catch {
-      window.open(LINKEDIN_URL, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error("Could not open LinkedIn in the system browser.", error);
+      setError("Could not open LinkedIn in your browser.");
     }
   }
 

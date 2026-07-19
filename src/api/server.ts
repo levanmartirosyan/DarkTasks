@@ -107,32 +107,32 @@ function initials(name: string) {
   );
 }
 
-function usernameFromEmail(email: string, fallbackId: string) {
-  const base =
-    email
-      .split("@")[0]
-      ?.replace(/[^a-z0-9_.-]/gi, "")
-      .toLowerCase() || "user";
-  return `${base}-${fallbackId.slice(0, 6)}`;
+function validateUsername(value: string | undefined): { username: string; error?: never } | { error: string; username?: never } {
+  const username = value?.trim();
+
+  if (!username) return { error: "Username is required" };
+  if (username.length < 3) return { error: "Username must be at least 3 characters" };
+  if (username.length > 32) return { error: "Username must be 32 characters or less" };
+  if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+    return { error: "Username can only use letters, numbers, dots, dashes, and underscores" };
+  }
+
+  return { username };
 }
 
 async function findDuplicateIdentity({
   email,
-  name,
   username,
   excludeId,
 }: {
   email?: string;
-  name?: string;
   username?: string;
   excludeId?: string;
 }) {
   const normalizedEmail = email?.trim().toLowerCase();
-  const normalizedName = name?.trim().toLowerCase();
   const normalizedUsername = username?.trim().toLowerCase();
   const identityWhere = or(
     normalizedEmail ? sql`lower(${users.email}) = ${normalizedEmail}` : undefined,
-    normalizedName ? sql`lower(${users.name}) = ${normalizedName}` : undefined,
     normalizedUsername ? sql`lower(${users.username}) = ${normalizedUsername}` : undefined,
   );
 
@@ -147,8 +147,6 @@ async function findDuplicateIdentity({
   if (!existing) return null;
   if (normalizedEmail && existing.email.toLowerCase() === normalizedEmail)
     return "Email already exists";
-  if (normalizedName && existing.name.toLowerCase() === normalizedName)
-    return "Name already exists";
   return "Username already exists";
 }
 
@@ -196,18 +194,18 @@ async function ensureUserIdentityIntegrity() {
   `);
 
   await db.execute(sql`
-    with ranked as (
-      select
-        id,
-        row_number() over (partition by lower(name) order by created_at, id) as rn
-      from users
-    )
     update users
     set
-      name = trim(coalesce(nullif(users.name, ''), 'User')) || ' ' || upper(left(users.id, 8)),
+      username = name,
       updated_at = now()
-    from ranked
-    where users.id = ranked.id and ranked.rn > 1
+    where
+      name ~ '^[A-Za-z0-9_.-]{3,32}$'
+      and lower(name) <> lower(username)
+      and not exists (
+        select 1
+        from users as other_users
+        where other_users.id <> users.id and lower(other_users.username) = lower(users.name)
+      )
   `);
 
   await db.execute(
@@ -216,9 +214,8 @@ async function ensureUserIdentityIntegrity() {
   await db.execute(
     sql`create unique index if not exists users_email_lower_unique on users (lower(email))`,
   );
-  await db.execute(
-    sql`create unique index if not exists users_name_lower_unique on users (lower(name))`,
-  );
+  await db.execute(sql`drop index if exists users_name_lower_unique`);
+  await db.execute(sql`update users set name = username where name is distinct from username`);
   await db.execute(sql`
     update users
     set last_active_at = coalesce(
@@ -515,7 +512,10 @@ api.post("/auth/login", async (c) => {
     .select()
     .from(users)
     .where(
-      or(sql`lower(${users.username}) = ${username}`, sql`lower(${users.email}) = ${username}`),
+      or(
+        sql`lower(${users.username}) = ${username}`,
+        sql`lower(${users.email}) = ${username}`,
+      ),
     )
     .limit(5);
   const user = matchingUsers.find((candidate) => verifyPassword(password, candidate.passwordHash));
@@ -554,19 +554,21 @@ api.post("/users", async (c) => {
   if (admin.response) return admin.response;
 
   const body = (await c.req.json()) as {
-    name?: string;
+    username?: string;
     email?: string;
     role?: "Admin" | "User";
     password?: string;
   };
-  const name = body.name?.trim();
+  const usernameResult = validateUsername(body.username);
+  if ("error" in usernameResult) return c.json({ error: usernameResult.error }, 400);
+
+  const username = usernameResult.username;
   const email = body.email?.trim().toLowerCase();
 
-  if (!name || !email) return c.json({ error: "Name and email are required" }, 400);
+  if (!email) return c.json({ error: "Email is required" }, 400);
 
   const id = randomUUID();
-  const username = usernameFromEmail(email, id);
-  const duplicate = await findDuplicateIdentity({ email, name, username });
+  const duplicate = await findDuplicateIdentity({ email, username });
 
   if (duplicate) return c.json({ error: duplicate }, 409);
 
@@ -576,11 +578,11 @@ api.post("/users", async (c) => {
       .values({
         id,
         username,
-        name,
+        name: username,
         email,
         role: body.role ?? "User",
         passwordHash: hashPassword(body.password || "DarkTasks123!"),
-        initials: initials(name),
+        initials: initials(username),
         color: colors[Math.floor(Math.random() * colors.length)],
       })
       .returning();
@@ -588,7 +590,7 @@ api.post("/users", async (c) => {
     return c.json(serializeUsers([created])[0], 201);
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return c.json({ error: "A user with this name, email, or username already exists" }, 409);
+      return c.json({ error: "A user with this username or email already exists" }, 409);
     }
     throw error;
   }
@@ -600,16 +602,19 @@ api.patch("/users/:id", async (c) => {
 
   const id = c.req.param("id");
   const body = (await c.req.json()) as {
-    name?: string;
+    username?: string;
     email?: string;
     role?: "Admin" | "User";
   };
-  const name = body.name?.trim();
+  const usernameResult = validateUsername(body.username);
+  if ("error" in usernameResult) return c.json({ error: usernameResult.error }, 400);
+
+  const username = usernameResult.username;
   const email = body.email?.trim().toLowerCase();
 
-  if (!name || !email) return c.json({ error: "Name and email are required" }, 400);
+  if (!email) return c.json({ error: "Email is required" }, 400);
 
-  const duplicate = await findDuplicateIdentity({ email, name, excludeId: id });
+  const duplicate = await findDuplicateIdentity({ email, username, excludeId: id });
   if (duplicate) return c.json({ error: duplicate }, 409);
 
   let updated;
@@ -617,16 +622,17 @@ api.patch("/users/:id", async (c) => {
     [updated] = await db
       .update(users)
       .set({
-        name,
+        username,
+        name: username,
         email,
         role: body.role ?? "User",
-        initials: initials(name),
+        initials: initials(username),
         updatedAt: new Date(),
       })
       .where(eq(users.id, id))
       .returning();
   } catch (error) {
-    if (isUniqueViolation(error)) return c.json({ error: "Name or email already exists" }, 409);
+    if (isUniqueViolation(error)) return c.json({ error: "Username or email already exists" }, 409);
     throw error;
   }
 
@@ -657,24 +663,27 @@ api.patch("/profile", async (c) => {
   const user = await currentUserFromRequest(c);
   if (!user) return c.json({ error: "User not found" }, 404);
 
-  const body = (await c.req.json()) as { name?: string; email?: string };
-  const name = body.name?.trim();
+  const body = (await c.req.json()) as { username?: string; email?: string };
+  const usernameResult = validateUsername(body.username);
+  if ("error" in usernameResult) return c.json({ error: usernameResult.error }, 400);
+
+  const username = usernameResult.username;
   const email = body.email?.trim().toLowerCase();
 
-  if (!name || !email) return c.json({ error: "Name and email are required" }, 400);
+  if (!email) return c.json({ error: "Email is required" }, 400);
 
-  const duplicate = await findDuplicateIdentity({ email, name, excludeId: user.id });
+  const duplicate = await findDuplicateIdentity({ email, username, excludeId: user.id });
   if (duplicate) return c.json({ error: duplicate }, 409);
 
   let updated;
   try {
     [updated] = await db
       .update(users)
-      .set({ name, email, initials: initials(name), updatedAt: new Date() })
+      .set({ username, name: username, email, initials: initials(username), updatedAt: new Date() })
       .where(eq(users.id, user.id))
       .returning();
   } catch (error) {
-    if (isUniqueViolation(error)) return c.json({ error: "Name or email already exists" }, 409);
+    if (isUniqueViolation(error)) return c.json({ error: "Username or email already exists" }, 409);
     throw error;
   }
 

@@ -835,7 +835,7 @@ function ProjectMembersModal({
                   )
                 }
               />
-              <span className="truncate">{user.name}</span>
+              <span className="truncate">{user.username || user.name}</span>
             </label>
           ))}
         </div>
@@ -1165,7 +1165,7 @@ function CreateTaskModal({
             <SelectContent>
               {users.map((user) => (
                 <SelectItem key={user.id} value={user.id}>
-                  {user.name}
+                  {user.username || user.name}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -148,8 +148,29 @@ fn open_external_url(url: String) -> Result<(), String> {
         return Err("External URL is not allowed.".to_string());
     }
 
-    Command::new("cmd")
-        .args(["/C", "start", "", &url])
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = Command::new("explorer.exe");
+        command.arg(&url);
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
+    };
+
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg(&url);
+        command
+    };
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(&url);
+        command
+    };
+
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

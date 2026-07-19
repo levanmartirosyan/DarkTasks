@@ -1,10 +1,14 @@
 ﻿import { cn } from "@/lib/utils";
 import type { User } from "@/lib/app-data";
 
-export function UserAvatar({ user, size = 28, ring = false, className }: { user: Pick<User, "initials" | "color" | "name">; size?: number; ring?: boolean; className?: string }) {
+type AvatarUser = Pick<User, "initials" | "color" | "name"> & Partial<Pick<User, "username">>;
+
+export function UserAvatar({ user, size = 28, ring = false, className }: { user: AvatarUser; size?: number; ring?: boolean; className?: string }) {
+  const title = user.username || user.name;
+
   return (
     <div
-      title={user.name}
+      title={title}
       className={cn(
         "grid shrink-0 place-items-center rounded-full font-medium text-primary-foreground select-none",
         ring && "ring-2 ring-background",

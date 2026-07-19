@@ -216,7 +216,7 @@ function SidebarInner({
           {!collapsed && (
             <>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{currentUser.name}</div>
+                <div className="truncate text-sm font-medium">{currentUser.username || currentUser.name}</div>
                 <div className="text-[11px] text-muted-foreground">{currentUser.role}</div>
               </div>
               <button

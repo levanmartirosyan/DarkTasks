@@ -127,7 +127,7 @@ function ActivityPage() {
                     <div className="min-w-0 flex-1 pt-0.5">
                       <div className="flex items-center gap-2 text-sm">
                         <UserAvatar user={user} size={18} />
-                        <span className="font-medium">{user.name}</span>
+                        <span className="font-medium">{user.username || user.name}</span>
                         <span className="text-muted-foreground">{item.action}</span>
                         <span>{item.target}</span>
                       </div>

@@ -70,7 +70,7 @@ function Dashboard() {
         <div>
           <div className="text-xs text-muted-foreground">{todayLabel}</div>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Welcome Back, {currentUser.name}.
+            Welcome Back, {currentUser.username || currentUser.name}.
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Here's what's happening across your workspace.

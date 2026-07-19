@@ -35,7 +35,7 @@ function UsersPage() {
   const filtered = users.filter(
     (user) =>
       (role === "all" || user.role === role) &&
-      (user.name.toLowerCase().includes(q.toLowerCase()) ||
+      ((user.username || user.name).toLowerCase().includes(q.toLowerCase()) ||
         user.email.toLowerCase().includes(q.toLowerCase())),
   );
 
@@ -126,7 +126,7 @@ function UsersPage() {
                   <div className="flex items-center gap-3">
                     <UserAvatar user={user} size={32} />
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium">{user.name}</div>
+                      <div className="truncate text-sm font-medium">{user.username || user.name}</div>
                       <div className="truncate text-xs text-muted-foreground">{user.email}</div>
                     </div>
                   </div>
@@ -310,7 +310,7 @@ function DeleteUserDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          Delete {user.name}? This cannot be undone.
+          Delete {user.username || user.name}? This cannot be undone.
         </div>
         {error && <div className="text-xs text-destructive">{error}</div>}
         <DialogFooter>
@@ -337,7 +337,7 @@ function UserModal({
   onClose: () => void;
   onSaved: (user: User) => void;
 }) {
-  const [name, setName] = useState(user?.name ?? "");
+  const [username, setUsername] = useState(user?.username || user?.name || "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [role, setRole] = useState<"Admin" | "User">(user?.role ?? "User");
   const [password, setPassword] = useState("");
@@ -351,8 +351,8 @@ function UserModal({
 
     try {
       const saved = user
-        ? ((await api.updateUser(user.id, { name, email, role })) as User)
-        : ((await api.createUser({ name, email, role, password })) as User);
+        ? ((await api.updateUser(user.id, { username, email, role })) as User)
+        : ((await api.createUser({ username, email, role, password })) as User);
       onSaved(saved);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save user.");
@@ -371,8 +371,12 @@ function UserModal({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <Field label="Full name">
-            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Jane Doe" />
+          <Field label="Username">
+            <Input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="DARKNESS"
+            />
           </Field>
           <Field label="Email">
             <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="jane@company.com" />

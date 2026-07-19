@@ -5,7 +5,7 @@ import { UserAvatar } from "@/components/app/user-avatar";
 
 export const Route = createFileRoute("/app/profile")({
   component: ProfilePage,
-  head: () => ({ meta: [{ title: `${currentUser.name} - DarkTasks` }] }),
+  head: () => ({ meta: [{ title: `${currentUser.username || currentUser.name} - DarkTasks` }] }),
 });
 
 function ProfilePage() {
@@ -29,7 +29,7 @@ function ProfilePage() {
       <div className="pt-14 flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">{currentUser.name}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{currentUser.username || currentUser.name}</h1>
             <span className="rounded-md gradient-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
               {currentUser.role}
             </span>

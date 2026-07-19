@@ -71,14 +71,14 @@ export const api = {
     }),
   bootstrap: (timeoutMs = BOOTSTRAP_TIMEOUT_MS) => request("/bootstrap", undefined, timeoutMs),
   users: () => request("/users"),
-  createUser: (user: { name: string; email: string; role: "Admin" | "User"; password?: string }) =>
+  createUser: (user: { username: string; email: string; role: "Admin" | "User"; password?: string }) =>
     request("/users", {
       method: "POST",
       body: JSON.stringify(user),
     }),
   updateUser: (
     id: string,
-    user: { name: string; email: string; role: "Admin" | "User" },
+    user: { username: string; email: string; role: "Admin" | "User" },
   ) =>
     request(`/users/${id}`, {
       method: "PATCH",
@@ -89,7 +89,7 @@ export const api = {
       method: "DELETE",
     }),
   profile: () => request("/profile"),
-  updateProfile: (profile: { name: string; email: string }) =>
+  updateProfile: (profile: { username: string; email: string }) =>
     request("/profile", {
       method: "PATCH",
       body: JSON.stringify(profile),

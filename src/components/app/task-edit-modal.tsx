@@ -197,7 +197,7 @@ export function TaskEditModal({
                 <SelectContent>
                   {users.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
-                      {user.name}
+                      {user.username || user.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

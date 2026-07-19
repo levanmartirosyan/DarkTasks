@@ -115,6 +115,7 @@ export function serializeTaskComment(comment: TaskComment) {
 export function serializeUsers(rows: User[]) {
   return rows.map(({ createdAt, updatedAt, passwordHash, lastActiveAt, ...user }) => ({
     ...user,
+    name: user.username,
     lastActive: lastActiveAt ? formatRelativeTime(lastActiveAt) : "Never",
     lastActiveAt: lastActiveAt?.toISOString() ?? null,
   }));

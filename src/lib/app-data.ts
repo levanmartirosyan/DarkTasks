@@ -1,6 +1,7 @@
 export type Priority = "low" | "medium" | "high" | "urgent";
 export type User = {
   id: string;
+  username: string;
   name: string;
   avatar: string;
   role: "Admin" | "User";
@@ -74,6 +75,7 @@ export type NotificationItem = {
 export const users: User[] = [];
 export const currentUser: User = {
   id: "",
+  username: "",
   name: "",
   avatar: "",
   role: "User",

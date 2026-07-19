@@ -192,7 +192,7 @@ export function TaskDetailSheet({
                       <UserAvatar user={item.user} size={20} ring />
                     </div>
                     <div className="text-sm">
-                      <span className="font-medium">{item.user.name}</span>{" "}
+                      <span className="font-medium">{item.user.username || item.user.name}</span>{" "}
                       <span className="text-muted-foreground">{item.action}</span>
                       <span className="text-muted-foreground"> - {item.time}</span>
                     </div>

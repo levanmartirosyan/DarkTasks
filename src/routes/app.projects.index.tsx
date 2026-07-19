@@ -34,7 +34,12 @@ function ProjectsPage() {
   const [editing, setEditing] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState<Project | null>(null);
   const [mineOnly, setMineOnly] = useState(false);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{
+    project: Project;
+    x: number;
+    y: number;
+    placement: "top" | "bottom";
+  } | null>(null);
   const [, setVersion] = useState(0);
   const filtered = projects.filter(
     (p) =>
@@ -167,16 +172,9 @@ function ProjectsPage() {
                 </div>
               </Link>
               <ProjectActions
-                open={openMenuId === p.id}
-                onToggle={() => setOpenMenuId((id) => (id === p.id ? null : p.id))}
-                onEdit={() => {
-                  setEditing(p);
-                  setOpenMenuId(null);
-                }}
-                onDelete={() => {
-                  setDeleting(p);
-                  setOpenMenuId(null);
-                }}
+                open={menu?.project.id === p.id}
+                className="absolute right-3 top-3"
+                onToggle={(event) => toggleProjectMenu(p, event.currentTarget)}
               />
             </div>
           ))}
@@ -230,16 +228,8 @@ function ProjectsPage() {
                   <td className="px-4 py-3 text-muted-foreground text-xs">{p.lastActivity}</td>
                   <td className="relative px-4 py-3 text-right">
                     <ProjectActions
-                      open={openMenuId === p.id}
-                      onToggle={() => setOpenMenuId((id) => (id === p.id ? null : p.id))}
-                      onEdit={() => {
-                        setEditing(p);
-                        setOpenMenuId(null);
-                      }}
-                      onDelete={() => {
-                        setDeleting(p);
-                        setOpenMenuId(null);
-                      }}
+                      open={menu?.project.id === p.id}
+                      onToggle={(event) => toggleProjectMenu(p, event.currentTarget)}
                     />
                   </td>
                 </tr>
@@ -247,6 +237,21 @@ function ProjectsPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {menu && (
+        <ProjectMenu
+          menu={menu}
+          onClose={() => setMenu(null)}
+          onEdit={() => {
+            setEditing(menu.project);
+            setMenu(null);
+          }}
+          onDelete={() => {
+            setDeleting(menu.project);
+            setMenu(null);
+          }}
+        />
       )}
 
       {creating && <CreateProjectModal onClose={() => setCreating(false)} />}
@@ -274,61 +279,90 @@ function ProjectsPage() {
       )}
     </div>
   );
+
+  function toggleProjectMenu(project: Project, button: HTMLElement) {
+    const rect = button.getBoundingClientRect();
+    const placement = window.innerHeight - rect.bottom < 116 ? "top" : "bottom";
+
+    setMenu((current) =>
+      current?.project.id === project.id
+        ? null
+        : {
+            project,
+            x: rect.right,
+            y: placement === "top" ? rect.top : rect.bottom,
+            placement,
+          },
+    );
+  }
 }
 
 function ProjectActions({
   open,
+  className,
   onToggle,
-  onEdit,
-  onDelete,
 }: {
   open: boolean;
-  onToggle: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  className?: string;
+  onToggle: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <div className="absolute right-3 top-3 z-10">
+    <div className={cn("relative z-10 inline-flex", className)}>
       <Button
         variant="ghost"
         size="icon"
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          onToggle();
+          onToggle(event);
         }}
-        className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+        className={cn(
+          "h-8 w-8 rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+          open && "bg-surface-2 text-foreground",
+        )}
       >
         <MoreHorizontal className="h-4 w-4" />
       </Button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={onToggle} />
-          <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-[var(--shadow-elevated)]">
-            <button
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onEdit();
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2 transition"
-            >
-              <Pencil className="h-4 w-4" /> Edit project
-            </button>
-            <button
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onDelete();
-              }}
-              className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 transition"
-            >
-              <Trash2 className="h-4 w-4" /> Delete project
-            </button>
-          </div>
-        </>
-      )}
     </div>
+  );
+}
+
+function ProjectMenu({
+  menu,
+  onClose,
+  onEdit,
+  onDelete,
+}: {
+  menu: { project: Project; x: number; y: number; placement: "top" | "bottom" };
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-[var(--shadow-elevated)] animate-scale-in"
+        style={{
+          left: Math.max(12, Math.min(menu.x - 176, window.innerWidth - 188)),
+          top: menu.placement === "bottom" ? menu.y + 6 : undefined,
+          bottom: menu.placement === "top" ? window.innerHeight - menu.y + 6 : undefined,
+        }}
+      >
+        <button
+          onClick={onEdit}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2 transition"
+        >
+          <Pencil className="h-4 w-4" /> Edit project
+        </button>
+        <button
+          onClick={onDelete}
+          className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 transition"
+        >
+          <Trash2 className="h-4 w-4" /> Delete project
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -527,7 +561,7 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
                   )
                 }
               />
-              <span className="truncate">{user.name}</span>
+              <span className="truncate">{user.username || user.name}</span>
             </label>
           ))}
         </div>
